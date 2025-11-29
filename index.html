@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collaborative Meetup Planner (Simulated Isochrone)</title>
+    <title>Meetup Planner (Latlong.ai API)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -72,8 +72,13 @@
 <body>
     <div class="min-h-screen flex items-start justify-center p-4">
         <div class="container-card p-6 md:p-10 rounded-xl w-full">
-            <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">Meetup Planner (Simulated Isochrone)</h1>
-            <p class="text-gray-500 text-center mb-6">Find the spot with the **best travel accessibility** for all participants.</p>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">Meetup Planner (Latlong.ai API)</h1>
+            <p class="text-gray-500 text-center mb-6">Uses **Latlong.ai** for accurate distance and landmark suggestions.</p>
+
+            <div class="mt-4 p-3 bg-indigo-100 text-indigo-700 rounded-lg" role="alert">
+                <p class="font-bold">✅ Latlong.ai API Token Loaded</p>
+                <p class="text-sm">Ready for Geocoding, Distance Matrix, and Landmark calculations.</p>
+            </div>
 
             <div id="status-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg hidden" role="alert"></div>
 
@@ -121,12 +126,11 @@
                     <h2 class="text-xl font-semibold text-gray-700 mb-2">Create New Group</h2>
                     <select id="occasion-create" required class="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out">
                         <option value="" disabled selected>Select an occasion</option>
-                        <option value="Casual Hangout">Casual Hangout (Coffee, Parks)</option>
-                        <option value="Birthday Celebration">Birthday Celebration (Dinner, Drinks)</option>
-                        <option value="Outdoor Adventure">Outdoor Adventure (Hiking, Scenic Views)</option>
-                        <option value="Cultural Visit">Cultural Visit (Museums, Historic Sites)</option>
-                        <option value="Foodie Exploration">Foodie Exploration (Markets, Unique Restaurants)</option>
-                        <option value="Team Building">Team Building (Escape Rooms, Activity Centers)</option>
+                        <option value="Cafe or Casual Hangout">Cafe or Casual Hangout</option>
+                        <option value="Fine Dining Restaurant">Fine Dining Restaurant</option>
+                        <option value="Museum or Cultural Site">Museum or Cultural Site</option>
+                        <option value="Public Park or Gardens">Public Park or Gardens</option>
+                        <option value="Major Transit Station">Major Transit Station (Traveler Meetup)</option>
                     </select>
                     <button type="button" id="create-group-btn" class="submit-button w-full text-white font-semibold py-3 rounded-xl">Create Group & Get Code</button>
                 </div>
@@ -158,7 +162,7 @@
 
                     <div class="flex flex-col space-y-3 mt-6">
                         <button type="button" id="calculate-btn" class="submit-button w-full text-white font-semibold py-3 rounded-xl flex items-center justify-center focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 disabled:opacity-50" disabled>
-                            <span id="button-text">Find Optimal Meeting Spots (Isochrone)</span>
+                            <span id="button-text">Find Optimal Center & Real-World Landmarks</span>
                             <div id="loading-indicator" class="loading-spinner hidden ml-3"></div>
                         </button>
                         <button type="button" id="end-session-btn" class="w-full text-sm font-semibold py-3 rounded-xl flex items-center justify-center bg-gray-200 text-gray-700 hover:bg-gray-300 transition duration-150 ease-in-out">End Session & Create New Group</button>
@@ -169,8 +173,7 @@
                     <h2 class="text-2xl font-semibold text-gray-700 mb-4">Top Recommendations</h2>
                     <div id="recommendations-list" class="space-y-6"></div>
                     <div id="sources-container" class="mt-6 text-xs text-gray-500 border-t pt-4">
-                        <p class="font-medium mb-2">Sources & Grounding (Based on **Simulated Isochrone Analysis**)</p>
-                        <ul id="sources-list" class="space-y-1"></ul>
+                        <p class="font-medium mb-2">Data Source: **Latlong.ai API Hub** (Geocoding, Distance Matrix, Landmark APIs)</p>
                     </div>
                 </div>
             </div>
@@ -179,36 +182,43 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-        import { getFirestore, setLogLevel, doc, getDoc, setDoc, addDoc, collection, onSnapshot, updateDoc, arrayUnion, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, doc, getDoc, setDoc, addDoc, collection, onSnapshot, updateDoc, arrayUnion, query, where, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
-        // CONFIGURATION SECTION
+        // =========================================================================
+        // ⚠️ START CONFIGURATION: YOUR TOKEN IS EMBEDDED HERE
+        // =========================================================================
+
+        // 1. Latlong.ai API Key/Token: **REQUIRED**
+        const LATLONG_API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJUb2tlbklEIjoiMzNmMjY3MTgtMjRiOC00NTFlLWJlMGYtOGZmMzA1ZDI3ZDk5IiwiQ2xpZW50SUQiOiI2YTA3ZDNkMC01MTNkLTRjMTMtYjRjMi04NTdiY2YzNDJiNWIiLCJCdW5pdElEIjozMCwiQXBwTmFtZSI6InBlcyBoYWNrYXRob24gbWFwcy1yZWltYWdpbmVkIiwiQXBwSUQiOjE4Mzk1LCJUaW1lU3RhbXAiOiIyMDI1LTExLTI4IDE3OjEyOjUyIiwiZXhwIjoxNzY0NTIyNzcyfQ.q5AqBLmiB3KlPMd58O5N767uBJ6qNxGmt6X2aYWtrbI"; 
+        
+        // Base URLs for Latlong.ai APIs
+        const LATLONG_BASE_URL = "https://apihub.latlong.ai/v4";
+        const GEOCODE_URL = `${LATLONG_BASE_URL}/geocode.json`;
+        const DISTANCE_MATRIX_URL = `${LATLONG_BASE_URL}/distance_matrix.json`;
+        const LANDMARK_URL = `${LATLONG_BASE_URL}/landmarks.json`;
+
+        // 2. Firebase Configuration (Retained for group/profile state management)
         const YOUR_FALLBACK_CONFIG = {
             apiKey: "AIzaSyBr2D6zEFX3u1wQTXE8aTgHFw5EeIUnsPE",
             authDomain: "html-9bee0.firebaseapp.com",
             projectId: "html-9bee0",
             storageBucket: "html-9bee0.firebasestorage.app",
             messagingSenderId: "893745664576",
-            appId: "1893745664576web1e74ae24e1c9e9bba685a5",
+            appId: "1893745664576web1e74ae24e1c9e9bba685a6",
             measurementId: "G-9DYC404SP0"
         };
+        const firebaseConfig = YOUR_FALLBACK_CONFIG;
+        const APP_ID = 'meetup-party-planner-latlong';
+        // =========================================================================
+        // ⚠️ END CONFIGURATION
+        // =========================================================================
 
-        const firebaseConfig = typeof firebaseconfig !== 'undefined' ? JSON.parse(firebaseconfig) : YOUR_FALLBACK_CONFIG;
-        const APP_ID = typeof appid !== 'undefined' ? appid : 'meetup-party-planner-v1';
-        
-        // GLOBAL STATE
+
+        // GLOBAL STATE & DOM REFERENCES
         let db, auth, userId = 'anonymous', isAuthReady = false, userProfile = null;
         let currentGroupId = null, groupUnsubscribe = null;
-
-        // DOM REFERENCES 
-        const VIEWS = {
-            loading: document.getElementById('initial-loading'),
-            profile: document.getElementById('view-profile'),
-            main: document.getElementById('view-main'),
-            create: document.getElementById('view-create'),
-            join: document.getElementById('view-join'),
-            session: document.getElementById('view-session')
-        };
+        const VIEWS = { loading: document.getElementById('initial-loading'), profile: document.getElementById('view-profile'), main: document.getElementById('view-main'), create: document.getElementById('view-create'), join: document.getElementById('view-join'), session: document.getElementById('view-session') };
         const PROFILE_FORM = document.getElementById('profile-form');
         const HOME_LOCALITY_INPUT = document.getElementById('home-locality');
         const PROFILE_NAME_INPUT = document.getElementById('profile-name');
@@ -230,7 +240,6 @@
         const GO_TO_PROFILE_BTN = document.getElementById('go-to-profile');
         const RESULTS_SECTION = document.getElementById('results-section');
         const RECOMMENDATIONS_LIST = document.getElementById('recommendations-list');
-        const SOURCES_LIST = document.getElementById('sources-list');
         const STATUS_MESSAGE = document.getElementById('status-message');
         const BUTTON_TEXT = document.getElementById('button-text');
         const LOADING_INDICATOR = document.getElementById('loading-indicator');
@@ -242,21 +251,619 @@
         const PROFILE_COLLECTION_PATH = `artifacts/${APP_ID}/users`;
         const GROUP_COLLECTION_PATH = `artifacts/${APP_ID}/groups`;
 
-        // FIREBASE INIT 
-        setLogLevel('error');
+        // Utility Functions
+        function showStatus(message, isError = false) {
+            STATUS_MESSAGE.textContent = message;
+            STATUS_MESSAGE.className = `mt-4 p-3 rounded-lg ${isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
+            STATUS_MESSAGE.classList.remove('hidden');
+            setTimeout(() => STATUS_MESSAGE.classList.add('hidden'), 5000);
+        }
+
+        function setView(mainView, subView = null) {
+            Object.values(VIEWS).forEach(v => v.classList.add('hidden'));
+            if (VIEWS[mainView]) VIEWS[mainView].classList.remove('hidden');
+            
+            if (mainView === 'main') {
+                document.getElementById('view-create').classList.add('hidden');
+                document.getElementById('view-join').classList.add('hidden');
+                document.getElementById('view-session').classList.add('hidden');
+                if (VIEWS[subView]) VIEWS[subView].classList.remove('hidden');
+                updateTabButtons(subView === 'join');
+            }
+        }
+        
+        function updateTabButtons(isJoinView) {
+            if (isJoinView) {
+                SHOW_CREATE_BTN.className = 'flex-1 py-2 font-medium rounded-lg transition-colors border-b-2 border-gray-300 text-gray-700 hover:bg-gray-100';
+                SHOW_JOIN_BTN.className = 'flex-1 py-2 font-medium rounded-lg transition-colors border-b-4 border-pink-500 text-pink-700 bg-pink-100 shadow-md';
+            } else {
+                SHOW_CREATE_BTN.className = 'flex-1 py-2 font-medium rounded-lg transition-colors border-b-4 border-indigo-500 text-indigo-700 bg-indigo-100 shadow-md';
+                SHOW_JOIN_BTN.className = 'flex-1 py-2 font-medium rounded-lg transition-colors border-b-2 border-gray-300 text-gray-700 hover:bg-gray-100';
+            }
+        }
+
+        function formatDistance(meters) {
+            if (meters === Infinity) return 'N/A';
+            if (meters < 1000) return `${Math.round(meters)} m`;
+            return `${(meters / 1000).toFixed(1)} km`;
+        }
+
+        function formatTime(seconds) {
+            if (seconds === Infinity) return 'N/A';
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+
+            let result = '';
+            if (hours > 0) result += `${hours} hr `;
+            if (remainingMinutes > 0 || hours === 0) result += `${remainingMinutes} min`;
+            return result.trim();
+        }
+
+        function generateGroupCode() {
+            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let code = '';
+            for (let i = 0; i < 6; i++) {
+                code += characters.charAt(Math.floor(Math.random() * characters.length));
+            }
+            return code;
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showStatus('Code copied to clipboard!', false);
+            }).catch(err => {
+                console.error('Could not copy text: ', err);
+                showStatus('Failed to copy code.', true);
+            });
+        }
+
+
+        // --- Latlong.ai API Functions ---
+
+        async function geocodeAddress(address) {
+            const endpoint = `${GEOCODE_URL}?address=${encodeURIComponent(address)}`;
+            
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'GET',
+                    headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
+                });
+                const data = await response.json();
+
+                if (data.status === 'success' && data.data && data.data.latitude) {
+                    return { lat: parseFloat(data.data.latitude), lon: parseFloat(data.data.longitude) };
+                }
+                
+                const errorMessage = data.message || data.status || 'Unknown Geocoding error';
+                console.error(`Latlong Geocoding failed for ${address}:`, errorMessage, data);
+                return null;
+            } catch (error) {
+                console.error('Network or parsing error during Geocoding:', error);
+                return null;
+            }
+        }
+
+        async function getDistanceMatrix(origins, destinations, profile = 'driving') {
+            const endpoint = `${DISTANCE_MATRIX_URL}?origins=${origins}&destinations=${destinations}&profile=${profile}`;
+            
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'GET',
+                    headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
+                });
+                const data = await response.json();
+
+                if (data.status === 'success' && data.data && data.data.rows && data.data.rows[0].elements[0].status === 'OK') {
+                    const element = data.data.rows[0].elements[0];
+                    return { 
+                        distance: element.distance.value, // meters
+                        duration: element.duration.value, // seconds
+                        status: 'OK'
+                    };
+                }
+                
+                const status = data.data?.rows[0]?.elements[0]?.status || data.message || 'ERROR';
+                console.warn(`Latlong Distance Matrix failed: Status: ${status}`, data);
+                return { distance: Infinity, duration: Infinity, status: status }; 
+
+            } catch (error) {
+                console.error('Network or parsing error during Distance Matrix:', error);
+                return { distance: Infinity, duration: Infinity, status: 'NETWORK_ERROR' }; 
+            }
+        }
+
+        async function getLandmarks(lat, lon) {
+            // Using radius of 10000 meters (10km) as a default search area
+            const endpoint = `${LANDMARK_URL}?latitude=${lat}&longitude=${lon}&radius=10000`; 
+            
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'GET',
+                    headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
+                });
+                const data = await response.json();
+
+                if (data.status === 'success' && Array.isArray(data.data)) {
+                    // Map the Latlong.ai response structure
+                    return data.data.map(landmark => ({
+                        name: landmark.name,
+                        lat: parseFloat(landmark.latitude),
+                        lon: parseFloat(landmark.longitude)
+                    }));
+                }
+                
+                console.warn('Latlong Landmark API failed or returned no results:', data.message || data.status);
+                return [];
+            } catch (error) {
+                console.error('Network or parsing error during Landmark search:', error);
+                return [];
+            }
+        }
+        
+        function calculateGeometricCenter(participants) {
+            let sumLat = 0, sumLon = 0;
+            if (participants.length === 0) return null;
+
+            participants.forEach(p => {
+                sumLat += p.lat;
+                sumLon += p.lon;
+            });
+
+            return {
+                lat: sumLat / participants.length,
+                lon: sumLon / participants.length
+            };
+        }
+
+
+        // --- Core Calculation Logic ---
+
+        async function findOptimalMeetupLocation() {
+            setButtonLoading(true);
+            RESULTS_SECTION.classList.add('hidden');
+            RECOMMENDATIONS_LIST.innerHTML = '';
+            showStatus('Step 1/3: Locating participants and calculating geometric center...', false);
+
+            const groupDocRef = doc(db, GROUP_COLLECTION_PATH, currentGroupId);
+            const groupSnapshot = await getDoc(groupDocRef);
+            if (!groupSnapshot.exists()) {
+                showStatus('Error: Group session not found.', true);
+                setButtonLoading(false);
+                return;
+            }
+            const groupData = groupSnapshot.data();
+            const participants = groupData.participants || [];
+
+            // 1. Ensure all participants have coordinates and use them
+            const validParticipants = participants.filter(p => p.lat && p.lon);
+            if (validParticipants.length < 2) {
+                showStatus('Error: Need at least 2 participants with valid addresses to calculate the center. Please re-save profiles.', true);
+                setButtonLoading(false);
+                return;
+            }
+            
+            const center = calculateGeometricCenter(validParticipants);
+            showStatus('Step 2/3: Finding nearby landmarks using Latlong.ai Landmark API...', false);
+            
+            // 2. Get Landmarks around the geometric center
+            const landmarkData = await getLandmarks(center.lat, center.lon);
+            
+            let potentialLocations = [];
+            
+            // Always include the theoretical center as a primary candidate
+            potentialLocations.push({ 
+                name: `Theoretical Geometric Center`, 
+                lat: center.lat, 
+                lon: center.lon 
+            });
+
+            // Add the found landmarks
+            potentialLocations.push(...landmarkData);
+
+
+            if (potentialLocations.length === 1 && landmarkData.length === 0) {
+                 showStatus('Warning: Could not find specific nearby landmarks. Calculating travel distance only to the theoretical center.', false);
+            } else {
+                 showStatus(`Step 3/3: Calculating accurate travel distance to ${potentialLocations.length} potential locations...`, false);
+            }
+
+            // 3. Calculate Distance Matrix for all potential locations
+            
+            const originCoordinates = validParticipants.map(p => `${p.lat},${p.lon}`).join('|');
+            const results = [];
+
+            for (let i = 0; i < potentialLocations.length; i++) {
+                const location = potentialLocations[i];
+                const destinationCoordinate = `${location.lat},${location.lon}`;
+                
+                // Get Distance Matrix for the whole group to this single location
+                const matrixResult = await getDistanceMatrix(originCoordinates, destinationCoordinate, 'driving');
+                
+                if (matrixResult.status === 'OK') {
+                    const travelDetails = [];
+                    let totalDistance = 0;
+                    let maxDuration = 0;
+
+                    // Assuming Distance Matrix returns rows corresponding to origins
+                    // Note: Latlong's Distance Matrix result structure is typically an array of rows, 
+                    // where each row corresponds to an origin. Since we passed N origins and 1 destination,
+                    // we expect N results in the first row's elements array (if the API supports multiple origins in one call).
+                    // **Since the Latlong.ai API call pattern is for origins|destinations, we will simplify the calculation assuming N origins to 1 destination is supported and flatten the results.**
+                    
+                    // For robustness, let's stick to the previous loop logic: one participant (origin) at a time
+                    
+                    let locationTotalDistance = 0;
+                    let locationMaxDuration = 0;
+                    let validLocation = true;
+                    
+                    for (let j = 0; j < validParticipants.length; j++) {
+                        const p = validParticipants[j];
+                        const singleOrigin = `${p.lat},${p.lon}`;
+
+                        const singleResult = await getDistanceMatrix(singleOrigin, destinationCoordinate, 'driving');
+                        
+                        if (singleResult.status === 'OK') {
+                            locationTotalDistance += singleResult.distance;
+                            locationMaxDuration = Math.max(locationMaxDuration, singleResult.duration);
+
+                            travelDetails.push({
+                                displayName: p.displayName,
+                                distance: singleResult.distance,
+                                duration: singleResult.duration
+                            });
+                        } else {
+                            validLocation = false;
+                            travelDetails.push({ displayName: p.displayName, distance: Infinity, duration: Infinity });
+                        }
+                    }
+
+                    if (validLocation) {
+                        results.push({
+                            rank: 0, // Placeholder, assigned later
+                            placeName: location.name,
+                            exactAddress: `${location.lat.toFixed(5)}, ${location.lon.toFixed(5)}`,
+                            totalDistance: locationTotalDistance,
+                            maxDuration: locationMaxDuration,
+                            travelDetails: travelDetails
+                        });
+                    }
+
+                } else if (location.name.includes('Theoretical')) {
+                    // This is the fallback for the theoretical center if the single API call failed
+                    showStatus(`Warning: Failed to calculate distance matrix for the Geometric Center. Skipping.`, true);
+                }
+            }
+
+            // 4. Sort and Display Results
+            const sortedResults = results
+                .sort((a, b) => a.totalDistance - b.totalDistance)
+                .slice(0, 5); // Show top 5
+
+            displayResults(sortedResults, validParticipants.length);
+
+            setButtonLoading(false);
+            showStatus('Calculation complete! Results displayed.', false);
+        }
+        
+        // --- Display Functions ---
+
+        function displayResults(results, participantCount) {
+            RECOMMENDATIONS_LIST.innerHTML = '';
+            
+            if (results.length === 0) {
+                RECOMMENDATIONS_LIST.innerHTML = '<p class="text-gray-500 italic">No valid meetup locations could be calculated. Please check your addresses or API quota.</p>';
+                RESULTS_SECTION.classList.remove('hidden');
+                return;
+            }
+
+            results.forEach((location, index) => {
+                location.rank = index + 1;
+                
+                let detailsHtml = location.travelDetails.map(d => `
+                    <tr>
+                        <td class="px-2 py-1 text-sm text-gray-700 font-medium">${d.displayName}</td>
+                        <td class="px-2 py-1 text-sm text-gray-600">${formatDistance(d.distance)}</td>
+                        <td class="px-2 py-1 text-sm text-gray-600">${formatTime(d.duration)}</td>
+                    </tr>
+                `).join('');
+
+                const cardHtml = `
+                    <div class="p-5 border-2 rounded-xl transition-shadow ${index === 0 ? 'bg-green-50 border-green-300 shadow-lg' : 'bg-white border-gray-200 shadow-md hover:shadow-lg'}">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-xl font-bold ${index === 0 ? 'text-green-700' : 'text-indigo-700'}">
+                                ${index + 1}. ${location.placeName}
+                                ${index === 0 ? '<span class="isochrone-badge bg-green-500">BEST ACCESS</span>' : ''}
+                            </h3>
+                            <p class="text-sm font-semibold text-gray-500">Total Travel: <span class="font-bold text-lg text-indigo-500">${formatDistance(location.totalDistance)}</span></p>
+                        </div>
+                        <p class="text-gray-600 mb-4 text-sm">Worst-case travel time: **${formatTime(location.maxDuration)}** (The longest journey to the spot).</p>
+                        
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full travel-table border border-gray-200 rounded-lg">
+                                <thead>
+                                    <tr>
+                                        <th class="rounded-tl-lg">Participant</th>
+                                        <th>Distance</th>
+                                        <th class="rounded-tr-lg">Time (Driving)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${detailsHtml}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                RECOMMENDATIONS_LIST.innerHTML += cardHtml;
+            });
+            
+            RESULTS_SECTION.classList.remove('hidden');
+            document.getElementById('sources-container').innerHTML = `
+                <p class="font-medium mb-2">Data Source: **Latlong.ai API Hub** (Geocoding, Distance Matrix, Landmark APIs)</p>
+            `;
+        }
+
+        function setButtonLoading(isLoading) {
+            CALCULATE_BTN.disabled = isLoading || (parseInt(PARTICIPANT_COUNT.textContent) < 2);
+            BUTTON_TEXT.textContent = isLoading ? 'Calculating...' : 'Find Optimal Center & Real-World Landmarks';
+            LOADING_INDICATOR.classList.toggle('hidden', !isLoading);
+        }
+
+        // --- Firebase/Auth/Group Listeners (Authentication and State Management) ---
+        
+        async function loadUserProfile() {
+            const userDocRef = doc(db, PROFILE_COLLECTION_PATH, userId);
+            const docSnap = await getDoc(userDocRef);
+
+            if (docSnap.exists()) {
+                userProfile = docSnap.data();
+                USER_DISPLAY_NAME.textContent = userProfile.displayName;
+                setView('main', userProfile.currentGroupId ? 'session' : 'create');
+                if (userProfile.currentGroupId) {
+                    currentGroupId = userProfile.currentGroupId;
+                    setupGroupListener(currentGroupId);
+                }
+            } else {
+                setView('profile');
+            }
+        }
+
+        async function saveProfile(event) {
+            event.preventDefault();
+            setButtonLoading(true, SAVE_PROFILE_BTN);
+
+            const displayName = PROFILE_NAME_INPUT.value.trim();
+            const homeLocality = HOME_LOCALITY_INPUT.value.trim();
+
+            if (!displayName || !homeLocality) {
+                showStatus('Display Name and Home Locality are required.', true);
+                setButtonLoading(false, SAVE_PROFILE_BTN);
+                return;
+            }
+
+            try {
+                showStatus('Verifying address...', false);
+                const coords = await geocodeAddress(homeLocality);
+
+                if (!coords) {
+                    throw new Error("Could not find coordinates for the provided address. Please check and refine your input.");
+                }
+
+                userProfile = {
+                    displayName: displayName,
+                    homeLocality: homeLocality,
+                    lat: coords.lat,
+                    lon: coords.lon,
+                    currentGroupId: userProfile ? userProfile.currentGroupId : null
+                };
+
+                const userDocRef = doc(db, PROFILE_COLLECTION_PATH, userId);
+                await setDoc(userDocRef, userProfile, { merge: true });
+
+                showStatus('Profile saved successfully!', false);
+                USER_DISPLAY_NAME.textContent = userProfile.displayName;
+                setView('main', userProfile.currentGroupId ? 'session' : 'create');
+            } catch (error) {
+                console.error("Error saving profile:", error);
+                showStatus(`Error saving profile: ${error.message}`, true);
+            } finally {
+                setButtonLoading(false, SAVE_PROFILE_BTN);
+            }
+        }
+        
+        function setButtonLoading(isLoading, buttonRef = CALCULATE_BTN) {
+            if (buttonRef === CALCULATE_BTN) {
+                CALCULATE_BTN.disabled = isLoading || (parseInt(PARTICIPANT_COUNT.textContent) < 2);
+                BUTTON_TEXT.textContent = isLoading ? 'Calculating...' : 'Find Optimal Center & Real-World Landmarks';
+                LOADING_INDICATOR.classList.toggle('hidden', !isLoading);
+            } else if (buttonRef === SAVE_PROFILE_BTN) {
+                SAVE_PROFILE_BTN.disabled = isLoading;
+                PROFILE_BUTTON_TEXT.textContent = isLoading ? 'Saving...' : 'Save Profile & Continue';
+                PROFILE_LOADING_INDICATOR.classList.toggle('hidden', !isLoading);
+            } else if (buttonRef === CREATE_GROUP_BTN) {
+                CREATE_GROUP_BTN.disabled = isLoading;
+                CREATE_GROUP_BTN.textContent = isLoading ? 'Creating...' : 'Create Group & Get Code';
+            } else if (buttonRef === JOIN_BY_CODE_BTN) {
+                JOIN_BY_CODE_BTN.disabled = isLoading;
+                JOIN_BY_CODE_BTN.textContent = isLoading ? 'Joining...' : 'Join Group';
+            }
+        }
+
+
+        async function createGroup() {
+            setButtonLoading(true, CREATE_GROUP_BTN);
+            try {
+                const occasion = OCCASION_CREATE.value;
+                if (!occasion) {
+                    showStatus('Please select an occasion.', true);
+                    setButtonLoading(false, CREATE_GROUP_BTN);
+                    return;
+                }
+
+                const newCode = generateGroupCode();
+                const newGroupRef = await addDoc(collection(db, GROUP_COLLECTION_PATH), {
+                    code: newCode,
+                    occasion: occasion,
+                    participants: [{
+                        userId: userId,
+                        displayName: userProfile.displayName,
+                        homeLocality: userProfile.homeLocality,
+                        lat: userProfile.lat,
+                        lon: userProfile.lon
+                    }],
+                    createdAt: new Date().toISOString()
+                });
+
+                currentGroupId = newGroupRef.id;
+                userProfile.currentGroupId = currentGroupId;
+                await setDoc(doc(db, PROFILE_COLLECTION_PATH, userId), { currentGroupId: currentGroupId }, { merge: true });
+
+                setupGroupListener(currentGroupId);
+                setView('main', 'session');
+                showStatus(`Group created! Code: ${newCode}`, false);
+
+            } catch (error) {
+                console.error("Error creating group:", error);
+                showStatus(`Error creating group: ${error.message}`, true);
+            } finally {
+                setButtonLoading(false, CREATE_GROUP_BTN);
+            }
+        }
+
+        async function joinGroupByCode() {
+            setButtonLoading(true, JOIN_BY_CODE_BTN);
+            const code = JOIN_CODE_INPUT.value.trim().toUpperCase();
+
+            try {
+                const q = query(collection(db, GROUP_COLLECTION_PATH), where("code", "==", code));
+                const querySnapshot = await getDocs(q);
+
+                if (querySnapshot.empty) {
+                    showStatus('Error: Invalid or expired group code.', true);
+                    return;
+                }
+
+                const groupDoc = querySnapshot.docs[0];
+                const groupId = groupDoc.id;
+                const groupData = groupDoc.data();
+
+                // Check if already a participant
+                const isParticipant = groupData.participants.some(p => p.userId === userId);
+                if (!isParticipant) {
+                    const participantData = {
+                        userId: userId,
+                        displayName: userProfile.displayName,
+                        homeLocality: userProfile.homeLocality,
+                        lat: userProfile.lat,
+                        lon: userProfile.lon
+                    };
+                    
+                    const groupDocRef = doc(db, GROUP_COLLECTION_PATH, groupId);
+                    await updateDoc(groupDocRef, {
+                        participants: arrayUnion(participantData)
+                    });
+                }
+
+                currentGroupId = groupId;
+                userProfile.currentGroupId = currentGroupId;
+                await setDoc(doc(db, PROFILE_COLLECTION_PATH, userId), { currentGroupId: currentGroupId }, { merge: true });
+
+                setupGroupListener(currentGroupId);
+                setView('main', 'session');
+                showStatus(`Successfully joined group: ${code}`, false);
+
+            } catch (error) {
+                console.error("Error joining group:", error);
+                showStatus(`Error joining group: ${error.message}`, true);
+            } finally {
+                setButtonLoading(false, JOIN_BY_CODE_BTN);
+            }
+        }
+
+        function setupGroupListener(groupId) {
+            if (groupUnsubscribe) groupUnsubscribe(); 
+            const groupDocRef = doc(db, GROUP_COLLECTION_PATH, groupId);
+            groupUnsubscribe = onSnapshot(groupDocRef, handleGroupSnapshot, (error) => {
+                console.error("Group listener error:", error);
+                showStatus("Group session connection lost.", true);
+            });
+        }
+
+        function handleGroupSnapshot(docSnapshot) {
+            if (!docSnapshot.exists()) {
+                currentGroupId = null;
+                userProfile.currentGroupId = null;
+                setDoc(doc(db, PROFILE_COLLECTION_PATH, userId), { currentGroupId: null }, { merge: true });
+                setView('main', 'create');
+                showStatus('The session you were in has ended.', true);
+                CALCULATE_BTN.disabled = true;
+                return;
+            }
+
+            const groupData = docSnapshot.data();
+            const participants = groupData.participants || [];
+
+            SESSION_JOIN_CODE.textContent = groupData.code;
+            PARTICIPANT_COUNT.textContent = participants.length;
+            SESSION_OCCASION.textContent = `(${groupData.occasion})`;
+
+            PARTICIPANTS_LIST.innerHTML = participants.map(p => 
+                `<p class="text-sm ${p.userId === userId ? 'font-bold text-indigo-700' : 'text-gray-700'}">${p.displayName} <span class="text-xs text-gray-500 italic">(${p.homeLocality})</span></p>`
+            ).join('');
+
+            CALCULATE_BTN.disabled = participants.length < 2;
+        }
+
+        async function endSession() {
+            if (!currentGroupId) return;
+
+            const groupDocRef = doc(db, GROUP_COLLECTION_PATH, currentGroupId);
+            try {
+                await deleteDoc(groupDocRef); // Use deleteDoc to remove the group
+            } catch (error) {
+                console.error("Error deleting group:", error);
+            }
+            
+            if (groupUnsubscribe) groupUnsubscribe();
+            currentGroupId = null;
+            userProfile.currentGroupId = null;
+            await setDoc(doc(db, PROFILE_COLLECTION_PATH, userId), { currentGroupId: null }, { merge: true });
+
+            setView('main', 'create');
+            showStatus('Session successfully ended.', false);
+            RESULTS_SECTION.classList.add('hidden');
+        }
+
+
+        // --- Event Listeners Setup ---
+        function setupListeners() {
+            PROFILE_FORM.addEventListener('submit', saveProfile);
+            GO_TO_PROFILE_BTN.addEventListener('click', () => setView('profile'));
+            
+            SHOW_CREATE_BTN.addEventListener('click', () => setView('main', 'create'));
+            SHOW_JOIN_BTN.addEventListener('click', () => setView('main', 'join'));
+
+            CREATE_GROUP_BTN.addEventListener('click', createGroup);
+            JOIN_BY_CODE_BTN.addEventListener('click', joinGroupByCode);
+            END_SESSION_BTN.addEventListener('click', endSession);
+            COPY_CODE_BTN.addEventListener('click', () => copyToClipboard(SESSION_JOIN_CODE.textContent));
+            
+            CALCULATE_BTN.addEventListener('click', findOptimalMeetupLocation);
+        }
+
+        // FIREBASE INIT
         document.addEventListener('DOMContentLoaded', async () => {
+            // No API key check needed here since the key is now hardcoded.
+            
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 setupListeners();
 
-                if (typeof initialauthtoken !== 'undefined') {
-                    await signInWithCustomToken(auth, initialauthtoken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
+                await signInAnonymously(auth);
+                
                 onAuthStateChanged(auth, async (user) => {
                     if (user) userId = user.uid;
                     else userId = crypto.randomUUID();
@@ -271,673 +878,6 @@
             }
         });
 
-        // --- Standard App Logic Functions (View, Profile, Group Management) ---
-
-        function setView(viewName, subView = null) {
-            Object.values(VIEWS).forEach(view => view.classList.add('hidden'));
-            if (viewName === 'profile') VIEWS.profile.classList.remove('hidden');
-            else if (viewName === 'main') {
-                VIEWS.main.classList.remove('hidden');
-                if (subView === 'create') {
-                    VIEWS.create.classList.remove('hidden');
-                    updateTabButtons('create');
-                } else if (subView === 'join') {
-                    VIEWS.join.classList.remove('hidden');
-                    updateTabButtons('join');
-                } else {
-                    VIEWS.create.classList.remove('hidden');
-                    updateTabButtons('create');
-                }
-            } else if (viewName === 'session') {
-                VIEWS.main.classList.remove('hidden');
-                VIEWS.session.classList.remove('hidden');
-            } else {
-                VIEWS.loading.classList.remove('hidden');
-            }
-        }
-
-        function updateTabButtons(activeTab) {
-            if (activeTab === 'create') {
-                SHOW_CREATE_BTN.classList.replace('border-gray-300', 'border-indigo-500');
-                SHOW_CREATE_BTN.classList.replace('text-gray-700', 'text-indigo-700');
-                SHOW_CREATE_BTN.classList.remove('hover:bg-gray-100', 'border-b-2');
-                SHOW_CREATE_BTN.classList.add('bg-indigo-100', 'shadow-md', 'border-b-4');
-                SHOW_JOIN_BTN.classList.replace('border-indigo-500', 'border-gray-300');
-                SHOW_JOIN_BTN.classList.replace('text-indigo-700', 'text-gray-700');
-                SHOW_JOIN_BTN.classList.remove('bg-indigo-100', 'shadow-md', 'border-b-4');
-                SHOW_JOIN_BTN.classList.add('hover:bg-gray-100', 'border-b-2');
-            } else {
-                SHOW_JOIN_BTN.classList.replace('border-gray-300', 'border-indigo-500');
-                SHOW_JOIN_BTN.classList.replace('text-gray-700', 'text-indigo-700');
-                SHOW_JOIN_BTN.classList.remove('hover:bg-gray-100', 'border-b-2');
-                SHOW_JOIN_BTN.classList.add('bg-indigo-100', 'shadow-md', 'border-b-4');
-                SHOW_CREATE_BTN.classList.replace('border-indigo-500', 'border-gray-300');
-                SHOW_CREATE_BTN.classList.replace('text-indigo-700', 'text-gray-700');
-                SHOW_CREATE_BTN.classList.remove('bg-indigo-100', 'shadow-md', 'border-b-4');
-                SHOW_CREATE_BTN.classList.add('hover:bg-gray-100', 'border-b-2');
-            }
-        }
-
-        async function loadUserProfile() {
-            if (!db || !isAuthReady) return;
-            try {
-                const profileDocRef = doc(db, PROFILE_COLLECTION_PATH, userId);
-                const docSnap = await getDoc(profileDocRef);
-                if (docSnap.exists()) {
-                    userProfile = docSnap.data();
-                    userProfile.userId = userId;
-                    PROFILE_NAME_INPUT.value = userProfile.name || '';
-                    HOME_LOCALITY_INPUT.value = userProfile.locality || '';
-                    USER_DISPLAY_NAME.textContent = userProfile.name || 'Friend';
-                    setView('main', 'create');
-                } else {
-                    userProfile = null;
-                    setView('profile');
-                }
-            } catch (error) {
-                console.error('Profile load error:', error);
-                setView('profile');
-            }
-        }
-
-        async function saveProfile(e) {
-            e.preventDefault();
-            const name = PROFILE_NAME_INPUT.value.trim();
-            const locality = HOME_LOCALITY_INPUT.value.trim();
-            if (!name || !locality) {
-                showStatus('Both fields required.', true);
-                return;
-            }
-            if (!db) {
-                showStatus('Database not ready.', true);
-                return;
-            }
-            setLoading(true, SAVE_PROFILE_BTN);
-            try {
-                const profileDocRef = doc(db, PROFILE_COLLECTION_PATH, userId);
-                const profileData = { name, locality, userId, updatedAt: new Date().toISOString() };
-                await setDoc(profileDocRef, profileData, { merge: true });
-                userProfile = profileData;
-                USER_DISPLAY_NAME.textContent = userProfile.name;
-                showStatus('Profile saved! Ready to plan.', false);
-                setView('main', 'create');
-            } catch (error) {
-                console.error('Profile save error:', error);
-                showStatus(`Save failed: ${error.message}`, true);
-            } finally {
-                setLoading(false, SAVE_PROFILE_BTN);
-            }
-        }
-
-        function generateJoinCode() {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let result = '';
-            for (let i = 0; i < 6; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        }
-
-        async function isCodeUnique(code) {
-            const q = query(collection(db, GROUP_COLLECTION_PATH), where('joinCode', '==', code));
-            const querySnapshot = await getDocs(q);
-            return querySnapshot.empty;
-        }
-
-        async function createGroupSession() {
-            if (!userProfile || !db) {
-                showStatus('Profile or database not ready.', true);
-                return;
-            }
-            setLoading(true, CREATE_GROUP_BTN);
-            const occasion = OCCASION_CREATE.value;
-            if (!occasion) {
-                showStatus('Select an occasion.', true);
-                setLoading(false, CREATE_GROUP_BTN);
-                return;
-            }
-            let joinCode, isUnique = false, attempts = 0;
-            while (!isUnique && attempts < 5) {
-                joinCode = generateJoinCode();
-                isUnique = await isCodeUnique(joinCode);
-                attempts++;
-            }
-            if (!isUnique) {
-                showStatus('Failed to generate unique code.', true);
-                setLoading(false, CREATE_GROUP_BTN);
-                return;
-            }
-            const initialGroupData = {
-                occasion, creatorId: userId, joinCode,
-                participants: [{ userId: userProfile.userId, name: userProfile.name, locality: userProfile.locality }],
-                createdAt: new Date().toISOString()
-            };
-            try {
-                const docRef = await addDoc(collection(db, GROUP_COLLECTION_PATH), initialGroupData);
-                currentGroupId = docRef.id;
-                startGroupListener(currentGroupId);
-                showStatus(`Group created! Code: ${joinCode}`, false);
-            } catch (error) {
-                console.error('Group creation error:', error);
-                showStatus(`Group failed: ${error.message}`, true);
-            } finally {
-                setLoading(false, CREATE_GROUP_BTN);
-            }
-        }
-
-        async function handleJoinByCode() {
-            const code = JOIN_CODE_INPUT.value.trim().toUpperCase();
-            if (!code || code.length !== 6 || !userProfile || !db) {
-                showStatus('Invalid code or profile not ready.', true);
-                return;
-            }
-            setLoading(true, JOIN_BY_CODE_BTN);
-            try {
-                const q = query(collection(db, GROUP_COLLECTION_PATH), where('joinCode', '==', code));
-                const querySnapshot = await getDocs(q);
-                if (querySnapshot.empty) {
-                    showStatus(`Group with code ${code} not found.`, true);
-                    setLoading(false, JOIN_BY_CODE_BTN);
-                    return;
-                }
-
-                const groupDoc = querySnapshot.docs[0];
-                const groupId = groupDoc.id;
-                const groupData = groupDoc.data();
-
-                const isParticipant = groupData.participants.some(p => p.userId === userId);
-                if (!isParticipant) {
-                    const groupDocRef = doc(db, GROUP_COLLECTION_PATH, groupId);
-                    await updateDoc(groupDocRef, {
-                        participants: arrayUnion({
-                            userId: userProfile.userId,
-                            name: userProfile.name,
-                            locality: userProfile.locality
-                        })
-                    });
-                    showStatus(`${userProfile.name} joined the group!`, false);
-                } else {
-                    showStatus('Welcome back! Already in group.', false);
-                }
-
-                currentGroupId = groupId;
-                startGroupListener(groupId);
-                JOIN_CODE_INPUT.value = '';
-            } catch (error) {
-                console.error('Join error:', error);
-                showStatus(`Join failed: ${error.message}`, true);
-            } finally {
-                setLoading(false, JOIN_BY_CODE_BTN);
-            }
-        }
-
-        function startGroupListener(groupId) {
-            if (groupUnsubscribe) groupUnsubscribe();
-            if (!db) return;
-
-            const groupDocRef = doc(db, GROUP_COLLECTION_PATH, groupId);
-            groupUnsubscribe = onSnapshot(groupDocRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    renderGroupSession(docSnap.data());
-                } else {
-                    currentGroupId = null;
-                    showStatus('Group session expired.', true);
-                    setView('main', 'create');
-                }
-            }, (error) => {
-                console.error('Listener error:', error);
-                showStatus('Real-time updates failed.', true);
-            });
-        }
-
-        function renderGroupSession(group) {
-            RESULTS_SECTION.classList.add('hidden');
-            const isCreator = group.creatorId === userId;
-            SESSION_OCCASION.textContent = `(${group.occasion})`;
-            PARTICIPANT_COUNT.textContent = group.participants.length;
-            SESSION_JOIN_CODE.textContent = group.joinCode || 'N/A';
-
-            PARTICIPANTS_LIST.innerHTML = '';
-            if (group.participants?.length > 0) {
-                group.participants.forEach(p => {
-                    const isMe = p.userId === userId;
-                    const isTheCreator = p.userId === group.creatorId;
-                    const badgeClass = isMe ? 'bg-indigo-200 text-indigo-800' : 'bg-gray-100 text-gray-700';
-                    const creatorText = isTheCreator ? ' - Creator' : '';
-                    const listItem = `
-                        <div class="flex justify-between items-center p-2 rounded-lg ${isMe ? 'border border-indigo-400 bg-indigo-50' : ''}">
-                            <div class="font-medium text-gray-800">${p.name}</div>
-                            <div class="flex items-center space-x-2">
-                                <span class="text-xs ${badgeClass} px-2 py-0.5 rounded-full">${isMe ? 'You' : 'Friend'}${creatorText}</span>
-                                <div class="text-sm text-gray-600 truncate max-w-[150px]">${p.locality}</div>
-                            </div>
-                        </div>`;
-                    PARTICIPANTS_LIST.insertAdjacentHTML('beforeend', listItem);
-                });
-            } else {
-                PARTICIPANTS_LIST.innerHTML = '<p class="text-gray-500 italic">Waiting for participants...</p>';
-            }
-
-            CALCULATE_BTN.disabled = group.participants.length < 2 || !isCreator;
-            CALCULATE_BTN.title = group.participants.length < 2 ? 'Need 2+ participants to calculate' : (!isCreator ? 'Only the creator can start calculation' : 'Ready to calculate');
-            setView('session');
-        }
-
-        // --- CORE GEOMETRY FUNCTIONS (Rigorous Math) ---
-
-        // Converts degrees to radians
-        function toRadian(degree) {
-            return degree * Math.PI / 180;
-        }
-
-        // Converts radians to degrees
-        function toDegree(radian) {
-            return radian * 180 / Math.PI;
-        }
-
-        /**
-         * Calculates the great-circle distance (Haversine Formula) between two coordinates in kilometers.
-         * This function uses actual mathematics for distance calculation.
-         * @param {number} lat1 
-         * @param {number} lon1 
-         * @param {number} lat2 
-         * @param {number} lon2 
-         * @returns {number} Distance in km.
-         */
-        function haversineDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371; // Earth radius in km
-            const dLat = toRadian(lat2 - lat1);
-            const dLon = toRadian(lon2 - lon1);
-            
-            // Haversine Formula Implementation
-            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                      Math.cos(toRadian(lat1)) * Math.cos(toRadian(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            return R * c; 
-        }
-
-        /**
-         * Simulates a geocoder to generate distinct coordinates from locality text.
-         * This ensures distinct non-zero distances.
-         * @param {string} localityKey 
-         * @returns {Object} {lat, lon}
-         */
-        function simulateCoordinates(localityKey) {
-            const cleanKey = localityKey.trim().replace(/[^a-z0-9]/gi, '').toLowerCase();
-            let sumChar = 0;
-            for (let i = 0; i < cleanKey.length; i++) {
-                sumChar += cleanKey.charCodeAt(i);
-            }
-            
-            // Use large, randomized offsets (1 to 10 degrees, approx 111km to 1110km)
-            const latOffset = (sumChar % 10) + 1.0 + (cleanKey.length * 0.1); 
-            const lonOffset = (sumChar % 10) + 1.0 + (sumChar % 5) * 0.2; 
-            
-            // Base coordinates (Bengaluru, India - 12.97, 77.59)
-            const baseLat = 12.9716;
-            const baseLon = 77.5946;
-
-            // Apply offsets, ensuring distinct quadrants
-            const lat = baseLat + (sumChar % 2 === 0 ? latOffset : -latOffset);
-            const lon = baseLon + (sumChar % 3 === 0 ? lonOffset : -lonOffset); 
-
-            return { lat, lon };
-        }
-
-        /**
-         * Simulates travel time based on straight-line Haversine distance.
-         * @param {number} distanceKm - Haversine distance in kilometers.
-         * @returns {number} Simulated travel time in minutes.
-         */
-        function simulateTravelTimeMinutes(distanceKm) {
-            if (distanceKm < 50) {
-                // Local driving speed
-                return (distanceKm / 45) * 60 + 5; 
-            } else if (distanceKm < 500) {
-                // Regional travel speed
-                return (distanceKm / 80) * 60;
-            } else {
-                // Major travel (long haul)
-                return (distanceKm / 700) * 60 * 1.5; 
-            }
-        }
-
-        /**
-         * Performs a Simulated Isochrone Analysis to find the point that minimizes the maximum travel time.
-         * This function uses an iterative search with the Haversine formula to find the mathematically optimal point.
-         */
-        function performSimulatedIsochroneAnalysis(participants) {
-            const rawCoordinates = participants.map(p => {
-                const coords = simulateCoordinates(p.locality);
-                return { ...coords, locality: p.locality, name: p.name };
-            });
-
-            // 1. Calculate the initial geometric center (Centroid) as a starting point for the search grid.
-            let avgLat = rawCoordinates.reduce((sum, p) => sum + p.lat, 0) / rawCoordinates.length;
-            let avgLon = rawCoordinates.reduce((sum, p) => sum + p.lon, 0) / rawCoordinates.length;
-
-            // 2. Define the search grid around the Centroid.
-            const searchRange = 0.05; // +/- 5.5 km radius search area
-            const steps = 10;
-            const stepSize = (searchRange * 2) / steps;
-            
-            let bestLat = avgLat;
-            let bestLon = avgLon;
-            let minMaxTravelTime = Infinity;
-
-            // 3. Iterate through the grid points.
-            for (let i = -steps / 2; i <= steps / 2; i++) {
-                for (let j = -steps / 2; j <= steps / 2; j++) {
-                    const candidateLat = avgLat + i * stepSize;
-                    const candidateLon = avgLon + j * stepSize;
-
-                    let maxTime = 0;
-
-                    // 4. Calculate maximum travel time (Max-Min approach for Isochrone)
-                    for (const p of rawCoordinates) {
-                        // **RIGOROUS MATH HERE:** haversineDistance is called for every point
-                        const dist = haversineDistance(p.lat, p.lon, candidateLat, candidateLon);
-                        const time = simulateTravelTimeMinutes(dist);
-                        maxTime = Math.max(maxTime, time);
-                    }
-
-                    // 5. The optimal point minimizes the *maximum* travel time.
-                    if (maxTime < minMaxTravelTime) {
-                        minMaxTravelTime = maxTime;
-                        bestLat = candidateLat;
-                        bestLon = candidateLon;
-                    }
-                }
-            }
-
-            return {
-                lat: bestLat,
-                lon: bestLon,
-                rawCoordinates: rawCoordinates,
-                minMaxTravelTime: minMaxTravelTime // The key Isochrone result
-            };
-        }
-
-
-        // --- MAIN CALCULATION FLOW ---
-
-        async function handleFindOptimalSpots() {
-            setLoading(true, CALCULATE_BTN);
-            BUTTON_TEXT.textContent = 'Performing Isochrone Analysis...';
-
-            if (!currentGroupId || !db) {
-                showStatus('No active group.', true);
-                setLoading(false, CALCULATE_BTN);
-                return;
-            }
-
-            try {
-                const groupDocSnap = await getDoc(doc(db, GROUP_COLLECTION_PATH, currentGroupId));
-                const group = groupDocSnap.data();
-
-                const participants = group.participants;
-                const occasion = group.occasion;
-                
-                if (participants.length < 2 || !occasion) {
-                    showStatus('Need 2+ participants & occasion.', true);
-                    setLoading(false, CALCULATE_BTN);
-                    return;
-                }
-
-                // 1. SIMULATED ISOCHRONE ANALYSIS (Uses rigorous Haversine internally)
-                const result = performSimulatedIsochroneAnalysis(participants);
-                const optimalLat = result.lat.toFixed(5);
-                const optimalLon = result.lon.toFixed(5);
-                const optimalString = `${optimalLat}, ${optimalLon}`;
-                const minMaxTimeMinutes = result.minMaxTravelTime;
-
-                BUTTON_TEXT.textContent = 'Generating Recommended Spots...';
-
-                // 2. SIMULATE LOCAL RECOMMENDATIONS & TRAVEL DETAILS
-                const recommendations = generateSimulatedRecommendations(
-                    participants, 
-                    occasion, 
-                    optimalString, 
-                    result.rawCoordinates,
-                    minMaxTimeMinutes
-                );
-
-                displayResults(recommendations, []);
-                showStatus(`Optimal spot calculated! Location: ${optimalString}`, false);
-
-            } catch (error) {
-                console.error('Calculation error:', error);
-                showStatus(`Simulated Isochrone analysis failed: ${error.message}`, true);
-                
-                displayResults(generateFallbackRecommendations(
-                    participants.map(p => p.locality), 
-                    group.occasion, 
-                    'Isochrone Analysis Error Fallback'
-                ), []);
-            } finally {
-                setLoading(false, CALCULATE_BTN);
-            }
-        }
-
-
-        // --- SIMULATION & FORMATTING FUNCTION ---
-
-        function generateSimulatedRecommendations(participants, occasion, optimalString, rawCoordinates, minMaxTimeMinutes) {
-            
-            // Check if coordinates are close together (within 50km) to suggest local vs transit hubs
-            const isLocal = rawCoordinates.every(c => haversineDistance(c.lat, c.lon, rawCoordinates[0].lat, rawCoordinates[0].lon) < 50); 
-            
-            // Suggest optimal points based on occasion selected
-            const type = occasion.toLowerCase().includes('coffee') || occasion.toLowerCase().includes('hangout') ? 'Cafe' : 
-                         occasion.toLowerCase().includes('dinner') || occasion.toLowerCase().includes('foodie') ? 'Restaurant' : 
-                         'Park or Landmark';
-
-            /**
-             * Calculates the travel details (distance/time) from all participants to a destination.
-             */
-            const getTravelDetails = (destinationLat, destinationLon) => {
-                return participants.map((p, index) => {
-                    const startCoord = rawCoordinates[index];
-                    
-                    // **USES HAVERSINE DISTANCE**
-                    const distance = haversineDistance(startCoord.lat, startCoord.lon, destinationLat, destinationLon);
-                    const timeMinutes = simulateTravelTimeMinutes(distance);
-
-                    // --- Distance Formatting ---
-                    const distStr = distance < 1000 ? `${distance.toFixed(1)} km` : `${Math.floor(distance / 100) * 100} km`;
-                    
-                    // --- Time Formatting ---
-                    let timeStr;
-                    if (timeMinutes < 60) {
-                        timeStr = `${Math.round(timeMinutes)} mins (Drive)`;
-                    } else if (timeMinutes < 180) {
-                        timeStr = `${(timeMinutes / 60).toFixed(1)} hrs (Drive/Rail)`;
-                    } else {
-                        timeStr = `${Math.floor(timeMinutes / 60)} hrs (Flight/Major Transit)`;
-                    }
-                    
-                    return {
-                        locality: p.locality,
-                        distance: distStr,
-                        travelTime: timeStr
-                    };
-                });
-            };
-
-            const optimalLat = parseFloat(optimalString.split(',')[0].trim());
-            const optimalLon = parseFloat(optimalString.split(',')[1].trim());
-
-            // Format the key Isochrone result
-            let minMaxTimeString;
-            if (minMaxTimeMinutes < 60) {
-                minMaxTimeString = `${Math.round(minMaxTimeMinutes)} minutes`;
-            } else {
-                minMaxTimeString = `${(minMaxTimeMinutes / 60).toFixed(1)} hours`;
-            }
-
-            // Calculate the pure Centroid (Cartesian Mean) for the second suggestion
-            // This is a complex geometric calculation often used for comparing center points
-            let centroidX = 0, centroidY = 0, centroidZ = 0;
-            rawCoordinates.forEach(p => {
-                const latRad = toRadian(p.lat);
-                const lonRad = toRadian(p.lon);
-                centroidX += Math.cos(latRad) * Math.cos(lonRad);
-                centroidY += Math.cos(latRad) * Math.sin(lonRad);
-                centroidZ += Math.sin(latRad);
-            });
-            const total = rawCoordinates.length;
-            const centroidLonRad = Math.atan2(centroidY / total, centroidX / total);
-            const hyp = Math.sqrt(Math.pow(centroidX / total, 2) + Math.pow(centroidY / total, 2));
-            const centroidLatRad = Math.atan2(centroidZ / total, hyp);
-            const centroidLat = toDegree(centroidLatRad);
-            const centroidLon = toDegree(centroidLonRad);
-
-
-            return [
-                {
-                    rank: 1,
-                    placeName: isLocal ? `Central ${type} with Best Access` : 'Major Transit Hub (Optimal Access)',
-                    exactAddress: `Optimal Isochrone Point: ${optimalString}`,
-                    justification: `This spot minimizes the **longest journey** any single participant has to make (Max Travel Time: **${minMaxTimeString}**). This is the Isochrone result for best accessibility.`,
-                    travelDetails: getTravelDetails(optimalLat, optimalLon)
-                },
-                {
-                    rank: 2,
-                    placeName: isLocal ? `Recommended ${type} Near Center` : 'Geometric Center Conference Hotel',
-                    exactAddress: `Lat: ${centroidLat.toFixed(5)}, Lon: ${centroidLon.toFixed(5)}`,
-                    justification: `The pure **geometric center** (Cartesian mean) - this point minimizes the *sum* of distances, often slightly off the Isochrone point, but useful for comparing the ideal geographic center.`,
-                    travelDetails: getTravelDetails(centroidLat, centroidLon)
-                },
-                {
-                    rank: 3,
-                    placeName: isLocal ? `The ${type} Landmark` : 'Major Airport / High-Speed Rail Terminal',
-                    // Offset the Isochrone point by a fixed distance towards one of the participants (Simulated amenity)
-                    exactAddress: `Lat: ${(optimalLat + 0.005).toFixed(5)}, Lon: ${(optimalLon - 0.002).toFixed(5)}`,
-                    justification: `A recognizable landmark, slightly offset from the absolute best point, but often offering better facilities or recognizable arrival/departure options.`,
-                    travelDetails: getTravelDetails(optimalLat + 0.005, optimalLon - 0.002)
-                }
-            ];
-        }
-        
-        // 🟡 FALLBACK FOR CATASTROPHIC FAILURES 
-        function generateFallbackRecommendations(localities, occasion, centroid) {
-            const place = occasion.toLowerCase().includes('food') ? 'Gourmet Food Market' : 'Public Library';
-            
-            const travelDetails = () => {
-                return localities.map(loc => {
-                    return { 
-                        locality: loc, 
-                        distance: `5.0 km`, 
-                        travelTime: `15-25 mins (Drive)` 
-                    };
-                });
-            };
-
-            return [
-                {
-                    rank: 1,
-                    placeName: `Generic Central ${place}`,
-                    exactAddress: `Fallback Center Point (Approx ${centroid})`,
-                    justification: `The primary calculation failed, using generic central meeting point recommendations based on the group's occasion.`,
-                    travelDetails: travelDetails()
-                }
-            ];
-        }
-
-
-        // RESULT DISPLAY, EVENT LISTENERS, UTILITIES 
-
-        function displayResults(recommendations, sources) {
-            RECOMMENDATIONS_LIST.innerHTML = '';
-            recommendations.forEach(place => {
-                const travelRows = place.travelDetails.map(d => 
-                    `<tr><td class="text-gray-600 truncate max-w-[120px]">${d.locality}</td><td class="font-medium">${d.distance}</td><td class="font-medium text-indigo-700">${d.travelTime}</td></tr>`
-                ).join('');
-                
-                const card = `
-                    <div class="bg-white p-6 rounded-xl shadow-2xl border-l-4 border-indigo-500">
-                        <div class="flex items-start space-x-4 mb-4">
-                            <span class="text-3xl font-bold text-indigo-600">${place.rank}</span>
-                            <div>
-                                <h3 class="text-xl font-bold">${place.placeName}</h3>
-                                <p class="text-sm text-gray-500 mt-1">📍 ${place.exactAddress}</p>
-                            </div>
-                        </div>
-                        <p class="text-sm text-gray-700 italic border-l-2 pl-3 mb-4">${place.justification}</p>
-                        <h4 class="text-md font-semibold mb-2">Travel from each location:</h4>
-                        <div class="overflow-x-auto rounded-lg border">
-                            <table class="travel-table w-full text-sm">
-                                <thead><tr><th>From</th><th>Distance</th><th>Time</th></tr></thead>
-                                <tbody>${travelRows}</tbody>
-                            </table>
-                        </div>
-                    </div>`;
-                RECOMMENDATIONS_LIST.insertAdjacentHTML('beforeend', card);
-            });
-
-            SOURCES_LIST.innerHTML = '';
-            RESULTS_SECTION.classList.remove('hidden');
-        }
-
-        function setupListeners() {
-            PROFILE_FORM.addEventListener('submit', saveProfile);
-            CREATE_GROUP_BTN.addEventListener('click', createGroupSession);
-            JOIN_BY_CODE_BTN.addEventListener('click', handleJoinByCode);
-            CALCULATE_BTN.addEventListener('click', handleFindOptimalSpots);
-            COPY_CODE_BTN.addEventListener('click', () => copyToClipboard(SESSION_JOIN_CODE.textContent, 'Join Code'));
-            END_SESSION_BTN.addEventListener('click', () => {
-                if (groupUnsubscribe) groupUnsubscribe();
-                currentGroupId = null;
-                setView('main', 'create');
-                showStatus('Session ended.', false);
-            });
-            GO_TO_PROFILE_BTN.addEventListener('click', () => setView('profile'));
-            SHOW_CREATE_BTN.addEventListener('click', () => setView('main', 'create'));
-            SHOW_JOIN_BTN.addEventListener('click', () => setView('main', 'join'));
-        }
-
-        function copyToClipboard(text, item) {
-            if (!text) return;
-            try {
-                navigator.clipboard.writeText(text).then(() => {
-                    showStatus(`${item} copied!`, false);
-                });
-            } catch {
-                const temp = document.createElement('textarea');
-                temp.value = text;
-                document.body.appendChild(temp);
-                temp.select();
-                document.execCommand('copy');
-                document.body.removeChild(temp);
-                showStatus(`${item} copied!`, false);
-            }
-        }
-
-        function showStatus(message, isError = false) {
-            STATUS_MESSAGE.textContent = message;
-            STATUS_MESSAGE.className = `mt-4 p-3 rounded-lg ${isError ? 'bg-red-100 text-red-700 border-red-400 border' : 'bg-green-100 text-green-700 border-green-400 border'}`;
-            STATUS_MESSAGE.classList.remove('hidden');
-        }
-
-        function setLoading(isLoading, buttonRef) {
-            buttonRef.disabled = isLoading;
-            let textElement, indicatorElement;
-            if (buttonRef === CALCULATE_BTN) {
-                textElement = BUTTON_TEXT;
-                indicatorElement = LOADING_INDICATOR;
-                if (!isLoading) textElement.textContent = 'Find Optimal Meeting Spots (Isochrone)';
-            } else if (buttonRef === SAVE_PROFILE_BTN) {
-                textElement = PROFILE_BUTTON_TEXT;
-                indicatorElement = PROFILE_LOADING_INDICATOR;
-                textElement.textContent = isLoading ? 'Saving...' : 'Save Profile & Continue';
-            } else if (buttonRef === CREATE_GROUP_BTN) {
-                buttonRef.textContent = isLoading ? 'Creating...' : 'Create Group & Get Code';
-            } else if (buttonRef === JOIN_BY_CODE_BTN) {
-                buttonRef.textContent = isLoading ? 'Joining...' : 'Join Group';
-            }
-
-            if (indicatorElement) indicatorElement.classList.toggle('hidden', !isLoading);
-        }
     </script>
 </body>
 </html>
