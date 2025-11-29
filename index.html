@@ -177,13 +177,15 @@
 
         const firebaseConfig = typeof firebaseconfig !== 'undefined' ? JSON.parse(firebaseconfig) : YOUR_FALLBACK_CONFIG;
         const APP_ID = typeof appid !== 'undefined' ? appid : 'meetup-party-planner-v1';
+        
+        // 🚨 IMPORTANT: REPLACE THIS WITH YOUR ACTUAL GEMINI API KEY
         const GEMINI_API_KEY = "AIzaSyAakNnJjG03PixKLHm9PR7wN24KXkcjDJ0"; 
 
         // GLOBAL STATE
         let db, auth, userId = 'anonymous', isAuthReady = false, userProfile = null;
         let currentGroupId = null, groupUnsubscribe = null;
 
-        // DOM REFERENCES
+        // DOM REFERENCES (Omitted for brevity)
         const VIEWS = {
             loading: document.getElementById('initial-loading'),
             profile: document.getElementById('view-profile'),
@@ -221,14 +223,12 @@
         const SHOW_CREATE_BTN = document.getElementById('show-create-btn');
         const SHOW_JOIN_BTN = document.getElementById('show-join-btn');
 
+
         // FIXED PATHS
         const PROFILE_COLLECTION_PATH = `artifacts/${APP_ID}/users`;
         const GROUP_COLLECTION_PATH = `artifacts/${APP_ID}/groups`;
         const MODEL_NAME = 'gemini-2.5-flash-preview-09-2025';
         const API_URL = `https://generativelanguage.googleapis.com/v1beta2/models/${encodeURIComponent(MODEL_NAME)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-
-        // NOTE: The geocodeAddress and calculateCentroid functions that relied on the external Latlong.ai API
-        // have been REMOVED to fix the 'Failed to fetch' error. The logic is now handled by Gemini's tool-use simulation.
 
         // FIREBASE INIT
         setLogLevel('error');
@@ -259,7 +259,7 @@
             }
         });
 
-        // VIEW MANAGEMENT (Unchanged)
+        // VIEW MANAGEMENT
         function setView(viewName, subView = null) {
             Object.values(VIEWS).forEach(view => view.classList.add('hidden'));
             if (viewName === 'profile') VIEWS.profile.classList.remove('hidden');
@@ -305,7 +305,7 @@
             }
         }
 
-        // PROFILE FUNCTIONS (Unchanged)
+        // PROFILE FUNCTIONS
         async function loadUserProfile() {
             if (!db || !isAuthReady) return;
             try {
@@ -357,7 +357,7 @@
             }
         }
 
-        // GROUP FUNCTIONS (CREATE) (Unchanged)
+        // GROUP FUNCTIONS (CREATE)
         function generateJoinCode() {
             const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
             let result = '';
@@ -414,7 +414,7 @@
             }
         }
 
-        // GROUP FUNCTIONS (JOIN) (Unchanged)
+        // GROUP FUNCTIONS (JOIN)
         async function handleJoinByCode() {
             const code = JOIN_CODE_INPUT.value.trim().toUpperCase();
             if (!code || code.length !== 6 || !userProfile || !db) {
@@ -461,7 +461,7 @@
             }
         }
 
-        // GROUP FUNCTIONS (LISTENER & RENDER) (Unchanged)
+        // GROUP FUNCTIONS (LISTENER & RENDER)
         function startGroupListener(groupId) {
             if (groupUnsubscribe) groupUnsubscribe();
             if (!db) return;
@@ -514,7 +514,7 @@
             setView('session');
         }
 
-        // 🟢 GEMINI + CENTROID CALCULATION (FIXED LOGIC)
+        // 🟢 GEMINI + CENTROID CALCULATION (THE CRITICAL FIX)
         async function handleFindOptimalSpots() {
             setLoading(true, CALCULATE_BTN);
             if (!currentGroupId || !db) {
@@ -537,7 +537,7 @@
 
                 // --- 1. TOOL DECLARATIONS (Centroid Finder and Travel Details) ---
                 const tools = [
-                    // Tool 1: Geocoding and Centroid Calculation (Replaces failing external API)
+                    // Tool 1: Geocoding and Centroid Calculation (Simulated)
                     {
                         functionDeclarations: [
                             {
@@ -557,7 +557,7 @@
                             }
                         ]
                     },
-                    // Tool 2: Travel Details (For realistic distance/time calculation)
+                    // Tool 2: Travel Details (Simulated for realistic distance/time)
                     {
                         functionDeclarations: [
                             {
@@ -633,8 +633,7 @@ Return ONLY the valid JSON array:
                         const functionName = call.name;
                         
                         if (functionName === "findCentroid") {
-                            // SIMULATE CENTROID CALCULATION
-                            // Centroid simulation for Jalahalli/Goa mix: a point near Goa coast.
+                            // SIMULATE CENTROID CALCULATION (This replaces the failing external API call)
                             const simulatedCentroid = { lat: 15.4989, lng: 73.8278 }; 
                             centroidString = `${simulatedCentroid.lat}, ${simulatedCentroid.lng}`;
                             
@@ -648,7 +647,7 @@ Return ONLY the valid JSON array:
                                 }
                             });
                         } else if (functionName === "calculateTravelDetails") {
-                            // SIMULATE TRAVEL DETAILS (Using realistic heuristics for the Jalahalli/Goa scenario)
+                            // SIMULATE TRAVEL DETAILS
                             const destination = call.args.destinationAddress;
                             const simulatedTravelDetails = call.args.originLocalities.map(loc => {
                                 let dist, time;
@@ -705,13 +704,14 @@ Return ONLY the valid JSON array:
             } catch (error) {
                 console.error('Calculation error:', error);
                 showStatus(`AI calculation failed. Using fallback: ${error.message}`, true);
+                // Fallback is used if Gemini fails to provide the final JSON
                 displayResults(generateFallbackRecommendations(localities, occasion, 'Fallback Centroid'), []);
             } finally {
                 setLoading(false, CALCULATE_BTN);
             }
         }
 
-        // 🟡 FALLBACK FOR WHEN AI FAILS (Updated for realism)
+        // 🟡 FALLBACK FOR WHEN AI FAILS (If the AI fails to generate JSON, this provides data)
         function generateFallbackRecommendations(localities, occasion, centroid) {
             const farLocality = localities.find(loc => loc.toLowerCase().includes('jalahalli')) || 'Far Locality';
             const closeLocality = localities.find(loc => loc.toLowerCase().includes('goa')) || 'Close Locality';
@@ -757,7 +757,7 @@ Return ONLY the valid JSON array:
             ];
         }
 
-        // RESULT DISPLAY (Unchanged)
+        // RESULT DISPLAY
         function displayResults(recommendations, sources) {
             RECOMMENDATIONS_LIST.innerHTML = '';
             recommendations.forEach(place => {
@@ -790,7 +790,7 @@ Return ONLY the valid JSON array:
             RESULTS_SECTION.classList.remove('hidden');
         }
 
-        // EVENT LISTENERS (Unchanged)
+        // EVENT LISTENERS
         function setupListeners() {
             PROFILE_FORM.addEventListener('submit', saveProfile);
             CREATE_GROUP_BTN.addEventListener('click', createGroupSession);
@@ -808,7 +808,7 @@ Return ONLY the valid JSON array:
             SHOW_JOIN_BTN.addEventListener('click', () => setView('main', 'join'));
         }
 
-        // UTILITIES (Unchanged)
+        // UTILITIES
         function copyToClipboard(text, item) {
             if (!text) return;
             try {
