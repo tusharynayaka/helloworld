@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meetup Planner Extended (Latlong.ai API)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght0400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
           crossorigin=""/>
@@ -298,6 +298,7 @@
         }
 
         function formatDistance(meters, isRouted = true) {
+            // Rectified formatDistance to clearly label non-routed distances
             const suffix = isRouted ? '' : ' (Straight Line)';
             if (meters === Infinity) return 'N/A';
             if (meters < 1000) return `${Math.round(meters)} m${suffix}`;
@@ -378,8 +379,9 @@
                 html: iconHtml
             });
 
+            // Added autoClose: false to keep popups open for clarity
             const marker = L.marker([lat, lon], {icon: markerIcon}).addTo(map);
-            marker.bindPopup(popupText, { closeButton: false, autoClose: false }).openPopup();
+            marker.bindPopup(popupText, { closeButton: false, autoClose: false }).openPopup(); 
             return marker;
         }
 
@@ -447,7 +449,6 @@
                 }
                 
                 const status = data.data?.rows[0]?.elements[0]?.status || data.message || 'ERROR';
-                // Use a different error code for the fallback logic
                 const errorStatus = (status === 'ZERO_RESULTS' || status === 'NOT_FOUND') ? 'ROUTE_NOT_FOUND' : status;
                 
                 console.warn(`Latlong Distance Matrix failed: Status: ${status}. Falling back to Haversine.`, data);
@@ -552,7 +553,7 @@
             setButtonLoading(true);
             RESULTS_SECTION.classList.add('hidden');
             RECOMMENDATIONS_LIST.innerHTML = '';
-            showStatus('Step 1/3: Locating participants and calculating geometric center...', false);
+            showStatus('Step 1/4: Locating participants and calculating geometric center...', false);
 
             try {
                 const groupDocRef = doc(db, GROUP_COLLECTION_PATH, currentGroupId);
@@ -570,17 +571,8 @@
                 }
                 
                 const center = calculateGeometricCenter(validParticipants);
-                
-                // Calculate dynamic radius for Landmark API (max half spread, min 5km, max 20km)
-                const maxSpread = calculateMaxSpread(validParticipants);
-                const dynamicRadius = Math.max(5000, Math.min(Math.floor(maxSpread / 2), 20000)); 
-                
-                showStatus(`Step 2/3: Finding nearby landmarks within a ${formatDistance(dynamicRadius, false)} radius using Latlong.ai Landmark API...`, false);
-                
-                // 2. Get Landmarks around the geometric center using the dynamic radius
-                const landmarkData = await getLandmarks(center.lat, center.lon, dynamicRadius);
-                
                 let potentialLocations = [];
+                let landmarkData = [];
                 
                 // Always include the theoretical center as a primary candidate
                 potentialLocations.push({ 
@@ -590,19 +582,36 @@
                     isCentroid: true
                 });
 
-                // Add the found landmarks
-                potentialLocations.push(...landmarkData);
 
+                // 2. Landmark Search Strategy
+                const maxSpread = calculateMaxSpread(validParticipants);
+                const dynamicRadius = Math.max(5000, Math.min(Math.floor(maxSpread / 2), 20000)); 
+                const broadRadius = 15000; // Fixed 15 km fallback search radius
 
-                if (potentialLocations.length === 1 && landmarkData.length === 0) {
-                     showStatus('Warning: Could not find specific nearby landmarks. Calculating travel distance only to the theoretical center.', false);
+                showStatus(`Step 2/4: Searching for landmarks within dynamic radius of ${formatDistance(dynamicRadius, false)}...`, false);
+                
+                // Attempt 1: Dynamic Radius Search
+                landmarkData = await getLandmarks(center.lat, center.lon, dynamicRadius);
+                
+                if (landmarkData.length === 0) {
+                    showStatus(`Step 2/4: Dynamic search failed. Retrying with a broader radius of ${formatDistance(broadRadius, false)}...`, false);
+                    
+                    // Attempt 2: Broad Fixed Radius Search
+                    landmarkData = await getLandmarks(center.lat, center.lon, broadRadius);
+                }
+                
+                if (landmarkData.length > 0) {
+                    potentialLocations.push(...landmarkData);
+                    showStatus(`Step 3/4: Found ${landmarkData.length} landmarks. Calculating routes...`, false);
                 } else {
-                     showStatus(`Step 3/3: Calculating accurate travel distance to ${potentialLocations.length} potential locations...`, false);
+                    showStatus('Step 3/4: Could not find specific nearby landmarks, even with a broader search. Calculating travel distance only to the theoretical center.', false);
                 }
 
-                // 3. Calculate Distance Matrix for all potential locations
+                // 4. Calculate Distance Matrix for all potential locations
                 
                 const results = [];
+                showStatus(`Step 4/4: Calculating ${validParticipants.length * potentialLocations.length} possible routes via Latlong.ai Distance Matrix...`, false);
+
 
                 for (let i = 0; i < potentialLocations.length; i++) {
                     const location = potentialLocations[i];
@@ -610,7 +619,7 @@
                     
                     let locationTotalDistance = 0;
                     let locationMaxDuration = 0;
-                    let validLocation = true;
+                    let allRouted = true;
                     const travelDetails = [];
                     
                     for (let j = 0; j < validParticipants.length; j++) {
@@ -623,14 +632,15 @@
                         let finalDuration = singleResult.duration;
                         let isRouted = (singleResult.status === 'OK');
 
-                        // FALLBACK LOGIC: If Distance Matrix fails (ROUTE_NOT_FOUND, NETWORK_ERROR, etc.), use Haversine distance.
+                        // FALLBACK LOGIC: If Distance Matrix fails, use Haversine distance.
                         if (!isRouted) {
                             finalDistance = haversineDistance(p.lat, p.lon, location.lat, location.lon);
-                            finalDuration = Infinity; // Cannot accurately estimate time without a route
+                            finalDuration = Infinity; 
+                            allRouted = false;
                         }
                         
                         locationTotalDistance += finalDistance;
-                        // Max duration only tracks valid routed times. If time is Infinity, maxDuration doesn't update.
+                        // Max duration only tracks valid routed times.
                         if (finalDuration !== Infinity) {
                             locationMaxDuration = Math.max(locationMaxDuration, finalDuration);
                         }
@@ -641,15 +651,10 @@
                             duration: finalDuration,
                             isRouted: isRouted
                         });
-                        
-                        // If any participant fails to get a routed distance, flag location as potentially incomplete
-                        if (!isRouted) {
-                            validLocation = false;
-                        }
                     }
 
                     results.push({
-                        rank: 0, // Placeholder, assigned later
+                        rank: 0, 
                         placeName: location.name,
                         lat: location.lat,
                         lon: location.lon,
@@ -657,12 +662,11 @@
                         maxDuration: locationMaxDuration,
                         travelDetails: travelDetails,
                         isCentroid: location.isCentroid || false,
-                        allRouted: validLocation // True if ALL participants got a routed distance
+                        allRouted: allRouted // True if ALL participants got a routed distance
                     });
                 }
 
-                // 4. Sort and Display Results
-                // Primary Sort: Total Distance. Secondary Sort: Places with successful routing first.
+                // 5. Sort and Display Results
                 const sortedResults = results
                     .sort((a, b) => {
                         // Prioritize results where ALL routes were successfully calculated
@@ -714,7 +718,7 @@
                 
                 // 2. Add Location Marker and update bounds
                 const markerType = location.isCentroid ? 'center' : 'landmark';
-                addMarker(location.lat, location.lon, `**#${index + 1} ${location.placeName}**<br>Total Distance: ${formatDistance(location.totalDistance)}`, markerType);
+                addMarker(location.lat, location.lon, `**#${index + 1} ${location.placeName}**<br>Total Distance: ${formatDistance(location.totalDistance, location.allRouted)}`, markerType);
                 bounds.extend([location.lat, location.lon]);
 
 
@@ -727,7 +731,7 @@
                 `).join('');
                 
                 const centroidNote = location.isCentroid ? '<p class="text-sm italic text-indigo-600 mb-2">This is the **Mathematical Center**. Landmark suggestions follow.</p>' : '';
-                const routingWarning = location.allRouted ? '' : '<p class="text-xs font-semibold text-red-600 mt-2">⚠️ Note: Some distances are straight-line (Haversine) as a precise driving route could not be found for all origins.</p>';
+                const routingWarning = location.allRouted ? '' : '<p class="text-xs font-semibold text-red-600 mt-2">⚠️ Note: Some distances are straight-line (Haversine) as a precise driving route could not be found for all origins. This location is still ranked highly based on its geometric distance.</p>';
 
                 const cardHtml = `
                     <div class="p-5 border-2 rounded-xl transition-shadow ${index === 0 ? 'bg-green-50 border-green-300 shadow-lg' : 'bg-white border-gray-200 shadow-md hover:shadow-lg'}">
@@ -739,7 +743,7 @@
                         </div>
                         ${centroidNote}
                         <p class="text-gray-600 mb-2 text-sm italic">Lat: ${location.lat.toFixed(5)}, Lon: ${location.lon.toFixed(5)}</p>
-                        <p class="text-gray-600 mb-4 text-sm font-medium">Worst-case travel time (Routed): **${location.maxDuration !== 0 ? formatTime(location.maxDuration) : 'N/A (No Routed Times Found)'}**.</p>
+                        <p class="text-gray-600 mb-4 text-sm font-medium">Worst-case travel time (Routed): **${location.maxDuration !== 0 ? formatTime(location.maxDuration) : 'N/A (No Valid Routed Times)'}**.</p>
                     
                         <div class="overflow-x-auto">
                             <table class="min-w-full travel-table rounded-lg">
@@ -779,7 +783,6 @@
 
         // =========================================================================
         // FIREBASE/AUTH/GROUP LISTENERS (State Management) - Omitted for brevity (unchanged)
-        // (The code below is unchanged from the previous version, ensuring state management works)
         // =========================================================================
         
         async function loadUserProfile() {
