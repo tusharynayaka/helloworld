@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Optimal Meetup Finder</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    
     <style>
         /* Custom styles for map and loading state */
         #map { height: 400px; border-radius: 0.75rem; }
@@ -202,13 +204,11 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-module.js" type="module"></script>
-
     <script type="module">
-        // Import Firebase Functions using ES Module syntax
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, getDocs, onSnapshot, arrayUnion, deleteDoc } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js';
-        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js';
+        // Import Firebase Functions using ES Module syntax (using newer v10+ links for better stability)
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js';
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, getDocs, onSnapshot, arrayUnion, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.0.0/firebase-auth.js';
 
 
         // =========================================================================
@@ -985,14 +985,19 @@
         }
 
         function handleGroupSnapshot(docSnapshot) {
-            if (map) map.remove(); 
-            markers.clearLayers();
+            // Note: map.remove() and markers.clearLayers() were removed here 
+            // to avoid errors before the map is properly initialized.
+            // Map initialization/update is handled later in displayResults or when recalculating.
+            
             RESULTS_SECTION.classList.add('hidden'); 
 
             if (!docSnapshot.exists()) {
                 currentGroupId = null;
                 userProfile.currentGroupId = null;
-                setDoc(doc(db, PROFILE_COLLECTION_PATH, userId), { currentGroupId: null }, { merge: true });
+                // Only attempt to update profile if userId exists (i.e., auth succeeded)
+                if (userId) {
+                     setDoc(doc(db, PROFILE_COLLECTION_PATH, userId), { currentGroupId: null }, { merge: true });
+                }
                 setView('main', 'create');
                 showStatus('The session you were in has ended.', true);
                 CALCULATE_BTN.disabled = true;
