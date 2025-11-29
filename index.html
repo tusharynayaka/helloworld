@@ -96,7 +96,7 @@
                 <h2 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Profile Setup Required</h2>
                 <div class="p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg text-sm text-yellow-700">
                     <p class="font-medium">Welcome!</p>
-                    <p>To join or create a group, please save your unique display name and primary home locality. **Enter your 6-digit Pin Code/Postal Code here** (e.g., 560013).</p>
+                    <p>To join or create a group, please save your unique display name and primary home locality. **Enter your Pin Code followed by the City/Locality Name**.</p>
                 </div>
                 <form id="profile-form" class="space-y-4">
                     <div>
@@ -105,7 +105,7 @@
                     </div>
                     <div>
                         <label for="home-locality" class="block text-sm font-medium text-gray-700 mb-1">Primary Home Locality/Address</label>
-                        <input type="text" id="home-locality" required placeholder="Enter your Pin Code (e.g., 560013)" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
+                        <input type="text" id="home-locality" required placeholder="e.g., 560013, Bengaluru" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
                     </div>
                     <button type="submit" id="save-profile-btn" class="w-full text-white font-semibold py-3 rounded-xl bg-pink-500 hover:bg-pink-600 transition">
                         <span class="flex items-center justify-center">
@@ -388,10 +388,10 @@
         // =========================================================================
 
         async function geocodeAddress(address) {
-            // **FINAL MODIFICATION HERE:** Append Country to help resolve Pin Codes
-            const addressWithCountry = `${address}, India`; // <-- THIS IS THE FIX
+            // FIX APPLIED: Reverted to use 'address' exactly as provided by user (Pin Code + City)
+            const addressWithContext = address; 
 
-            const endpoint = `${GEOCODE_URL}?address=${encodeURIComponent(addressWithCountry)}`;
+            const endpoint = `${GEOCODE_URL}?address=${encodeURIComponent(addressWithContext)}`;
             
             try {
                 const response = await fetch(endpoint, {
@@ -717,18 +717,18 @@
             const homeLocality = HOME_LOCALITY_INPUT.value.trim();
 
             if (!displayName || !homeLocality) {
-                showStatus('Display Name and Home Locality (Pin Code) are required.', true);
+                showStatus('Display Name and Home Locality (Pin Code + City) are required.', true);
                 setButtonLoading(false, SAVE_PROFILE_BTN);
                 return;
             }
 
             try {
-                showStatus('Verifying Pin Code via Latlong.ai Geocoding...', false);
+                showStatus('Verifying Pin Code and Locality via Latlong.ai Geocoding...', false);
                 const coords = await geocodeAddress(homeLocality);
 
                 if (!coords) {
                     // Specific error handling for geocoding failure
-                    throw new Error("Could not find precise coordinates for the provided Pin Code. Please double-check the number or ensure your Latlong.ai API key is active.");
+                    throw new Error("Could not find precise coordinates for the provided Pin Code/Address. Please ensure you entered the Pin Code followed by the City/Locality (e.g., 560013, Bengaluru).");
                 }
 
                 userProfile = {
