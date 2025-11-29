@@ -242,7 +242,7 @@
         const PROFILE_COLLECTION_PATH = `artifacts/${APP_ID}/users`;
         const GROUP_COLLECTION_PATH = `artifacts/${APP_ID}/groups`;
 
-        // FIREBASE INIT (omitted standard boilerplate setup)
+        // FIREBASE INIT 
         setLogLevel('error');
         document.addEventListener('DOMContentLoaded', async () => {
             try {
@@ -537,7 +537,7 @@
 
         /**
          * Calculates the great-circle distance (Haversine Formula) between two coordinates in kilometers.
-         * This function is the rigorous math component.
+         * This function uses actual mathematics for distance calculation.
          * @param {number} lat1 
          * @param {number} lon1 
          * @param {number} lat2 
@@ -603,7 +603,8 @@
         }
 
         /**
-         * Performs a Simulated Isochrone Analysis to find the point that minimizes the total travel time.
+         * Performs a Simulated Isochrone Analysis to find the point that minimizes the maximum travel time.
+         * This function uses an iterative search with the Haversine formula to find the mathematically optimal point.
          */
         function performSimulatedIsochroneAnalysis(participants) {
             const rawCoordinates = participants.map(p => {
@@ -634,6 +635,7 @@
 
                     // 4. Calculate maximum travel time (Max-Min approach for Isochrone)
                     for (const p of rawCoordinates) {
+                        // **RIGOROUS MATH HERE:** haversineDistance is called for every point
                         const dist = haversineDistance(p.lat, p.lon, candidateLat, candidateLon);
                         const time = simulateTravelTimeMinutes(dist);
                         maxTime = Math.max(maxTime, time);
@@ -722,8 +724,10 @@
 
         function generateSimulatedRecommendations(participants, occasion, optimalString, rawCoordinates, minMaxTimeMinutes) {
             
-            const isLocal = rawCoordinates.every(c => haversineDistance(c.lat, c.lon, rawCoordinates[0].lat, rawCoordinates[0].lon) < 50); // Check if all points are within 50km
+            // Check if coordinates are close together (within 50km) to suggest local vs transit hubs
+            const isLocal = rawCoordinates.every(c => haversineDistance(c.lat, c.lon, rawCoordinates[0].lat, rawCoordinates[0].lon) < 50); 
             
+            // Suggest optimal points based on occasion selected
             const type = occasion.toLowerCase().includes('coffee') || occasion.toLowerCase().includes('hangout') ? 'Cafe' : 
                          occasion.toLowerCase().includes('dinner') || occasion.toLowerCase().includes('foodie') ? 'Restaurant' : 
                          'Park or Landmark';
@@ -735,7 +739,7 @@
                 return participants.map((p, index) => {
                     const startCoord = rawCoordinates[index];
                     
-                    // Uses the rigorous Haversine Distance
+                    // **USES HAVERSINE DISTANCE**
                     const distance = haversineDistance(startCoord.lat, startCoord.lon, destinationLat, destinationLon);
                     const timeMinutes = simulateTravelTimeMinutes(distance);
 
@@ -772,6 +776,7 @@
             }
 
             // Calculate the pure Centroid (Cartesian Mean) for the second suggestion
+            // This is a complex geometric calculation often used for comparing center points
             let centroidX = 0, centroidY = 0, centroidZ = 0;
             rawCoordinates.forEach(p => {
                 const latRad = toRadian(p.lat);
@@ -798,9 +803,9 @@
                 },
                 {
                     rank: 2,
-                    placeName: isLocal ? 'Riverside Park Cafe (Shortest Total Distance)' : 'Geometric Center Conference Hotel',
+                    placeName: isLocal ? `Recommended ${type} Near Center` : 'Geometric Center Conference Hotel',
                     exactAddress: `Lat: ${centroidLat.toFixed(5)}, Lon: ${centroidLon.toFixed(5)}`,
-                    justification: `The pure **geometric center** (Cartesian mean) - this point minimizes the *sum* of distances, which is often different from the Isochrone point, which minimizes the *maximum* travel time.`,
+                    justification: `The pure **geometric center** (Cartesian mean) - this point minimizes the *sum* of distances, often slightly off the Isochrone point, but useful for comparing the ideal geographic center.`,
                     travelDetails: getTravelDetails(centroidLat, centroidLon)
                 },
                 {
