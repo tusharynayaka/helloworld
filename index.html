@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
           crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
             crossorigin=""></script>
     
@@ -477,12 +477,9 @@
             }
         }
 
-        const LATLONG_API_KEY = "eyJhbGciOiJIUzI1NiI..."; // Your JWT
-
         async function getLandmarks(lat, lon, radius) {
-        const url = `https://apihub.latlong.ai/v4/landmarks.json?latitude=${lat}&longitude=${lon}&radius=${radius}&api_key=${LATLONG_API_KEY}`;
-    // ... rest of the fetch logic
-
+            // Using dynamic radius in meters
+            const endpoint = `${LANDMARK_URL}?latitude=${lat}&longitude=${lon}&radius=${radius}`; 
             
             try {
                 const response = await fetch(endpoint, {
@@ -687,52 +684,7 @@
                 }
 
                 // 5. Sort and Display Results
-                // ... (End of step 4 loop, where all results are in the 'results' array)
-
-// 5. Advanced Ranking, Isochrone Filtering, and Display
-
-// Sort results primarily by distance to find the BEST theoretical travel hub
-const bestDistanceResult = results.sort((a, b) => a.totalDistance - b.totalDistance)[0];
-
-let bestTravelTime = bestDistanceResult.maxDuration; // Use the max travel time (duration) from the best distance location
-if (bestTravelTime === 0 || bestTravelTime === Infinity) {
-    // Fallback time limit (e.g., 30 minutes) if routed times are unavailable
-    bestTravelTime = 1800; 
-}
-
-showStatus(`Step 5/5: Finding accessible area (Isochrone) for max travel time of ${formatTime(bestTravelTime)}...`, false);
-
-// A. Get the Isochrone Polygon for the theoretical center
-const centerLocation = potentialLocations.find(loc => loc.isCentroid);
-let isochroneGeoJSON = null;
-
-if (centerLocation) {
-    isochroneGeoJSON = await getIsochronePolygon(centerLocation.lat, centerLocation.lon, bestTravelTime);
-}
-
-// B. Final Sort, Rank, and Filter
-const finalRankedResults = results
-    .filter(location => !location.isCentroid) // Don't rank the mathematical center itself
-    .sort((a, b) => {
-        // Primary sort: Prioritize fully routed results
-        if (a.allRouted !== b.allRouted) {
-            return a.allRouted ? -1 : 1; 
-        }
-        // Secondary sort: Then by total distance
-        return a.totalDistance - b.totalDistance;
-    })
-    .slice(0, 5) // Show top 5 real-world suggestions
-
-// Add the center back at Rank 0, but only for informational purposes
-if (centerLocation) {
-    finalRankedResults.unshift(results.find(loc => loc.isCentroid));
-}
-
-// C. Display results and the isochrone boundary
-displayResults(finalRankedResults, validParticipants, isochroneGeoJSON);
-
-showStatus('Calculation complete! Results displayed.', false);
-// ... (rest of finally block)
+                
                 const sortedResults = results
                     .sort((a, b) => {
                         // Prioritize results where ALL routes were successfully calculated
