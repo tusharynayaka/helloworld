@@ -297,10 +297,11 @@
             }
         }
 
-        function formatDistance(meters) {
+        function formatDistance(meters, isRouted = true) {
+            const suffix = isRouted ? '' : ' (Straight Line)';
             if (meters === Infinity) return 'N/A';
-            if (meters < 1000) return `${Math.round(meters)} m`;
-            return `${(meters / 1000).toFixed(1)} km`;
+            if (meters < 1000) return `${Math.round(meters)} m${suffix}`;
+            return `${(meters / 1000).toFixed(1)} km${suffix}`;
         }
 
         function formatTime(seconds) {
@@ -364,21 +365,21 @@
         }
 
         function addMarker(lat, lon, popupText, iconType = 'default') {
+            // Using different color classes for better map visualization
             let markerColor = iconType === 'center' ? 'red' : (iconType === 'landmark' ? 'blue' : 'green');
+            
+            // Custom Icon for better visual
+            let iconHtml = '📍';
+            if (iconType === 'center') iconHtml = '⭐';
+            else if (iconType === 'origin') iconHtml = '🏠';
+
             let markerIcon = new L.DivIcon({
-                className: `custom-div-icon bg-${markerColor}-600 rounded-full w-4 h-4 text-white text-xs text-center leading-4 shadow-lg`,
-                html: '📍' // Simple pin emoji
+                className: `custom-div-icon bg-${markerColor}-600 rounded-full w-6 h-6 text-white text-base text-center leading-6 shadow-xl font-bold`,
+                html: iconHtml
             });
 
-            if (iconType === 'center') {
-                markerIcon = new L.DivIcon({
-                    className: `custom-div-icon bg-red-600 rounded-full w-6 h-6 text-white text-xs text-center leading-6 shadow-xl font-bold`,
-                    html: '⭐'
-                });
-            }
-
             const marker = L.marker([lat, lon], {icon: markerIcon}).addTo(map);
-            marker.bindPopup(popupText).openPopup();
+            marker.bindPopup(popupText, { closeButton: false, autoClose: false }).openPopup();
             return marker;
         }
 
@@ -398,11 +399,9 @@
                     headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
                 });
                 
-                // Check for HTTP errors first (e.g., 401 Unauthorized, 400 Bad Request)
                 if (!response.ok) {
                     const errorBody = await response.text();
                     console.error(`Latlong Geocoding HTTP Error ${response.status}:`, errorBody);
-                    // Throw specific error for profile saving function to catch
                     throw new Error(`API Geocoding failed: HTTP ${response.status}. Check API token or network.`);
                 }
                 
@@ -414,11 +413,9 @@
                 
                 const errorMessage = data.message || data.status || 'Unknown Geocoding error';
                 console.error(`Latlong Geocoding failed for ${address}:`, errorMessage, data);
-                // Throw specific error for the profile saving function
                 throw new Error(data.message || 'Could not find coordinates for the provided address.');
             } catch (error) {
                 console.error('Network or parsing error during Geocoding:', error);
-                // Re-throw if it was a custom error, or throw a generic one
                 if (error.message.startsWith('API Geocoding failed')) throw error;
                 throw new Error(`Network error during geocoding: ${error.message}`);
             }
@@ -443,15 +440,18 @@
                 if (data.status === 'success' && data.data && data.data.rows && data.data.rows[0].elements[0].status === 'OK') {
                     const element = data.data.rows[0].elements[0];
                     return { 
-                        distance: element.distance.value, // meters
+                        distance: element.distance.value, // meters (Routed Distance)
                         duration: element.duration.value, // seconds
                         status: 'OK'
                     };
                 }
                 
                 const status = data.data?.rows[0]?.elements[0]?.status || data.message || 'ERROR';
-                console.warn(`Latlong Distance Matrix failed: Status: ${status}`, data);
-                return { distance: Infinity, duration: Infinity, status: status }; 
+                // Use a different error code for the fallback logic
+                const errorStatus = (status === 'ZERO_RESULTS' || status === 'NOT_FOUND') ? 'ROUTE_NOT_FOUND' : status;
+                
+                console.warn(`Latlong Distance Matrix failed: Status: ${status}. Falling back to Haversine.`, data);
+                return { distance: Infinity, duration: Infinity, status: errorStatus }; 
 
             } catch (error) {
                 console.error('Network or parsing error during Distance Matrix:', error);
@@ -460,7 +460,7 @@
         }
 
         async function getLandmarks(lat, lon, radius) {
-            // Updated to use dynamic radius in meters
+            // Using dynamic radius in meters
             const endpoint = `${LANDMARK_URL}?latitude=${lat}&longitude=${lon}&radius=${radius}`; 
             
             try {
@@ -477,7 +477,6 @@
                 const data = await response.json();
 
                 if (data.status === 'success' && Array.isArray(data.data)) {
-                    // Map the Latlong.ai response structure
                     return data.data.map(landmark => ({
                         name: landmark.name,
                         lat: parseFloat(landmark.latitude),
@@ -493,6 +492,24 @@
             }
         }
         
+        // --- Haversine and Center Calculation Utilities ---
+
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            // Implements Haversine distance in meters
+            const R = 6371e3; // Earth radius in metres
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c; // in metres
+        }
+
         function calculateGeometricCenter(participants) {
             let sumLat = 0, sumLon = 0;
             if (participants.length === 0) return null;
@@ -508,24 +525,6 @@
             };
         }
 
-        // Haversine formula to calculate the distance between two points on the surface of a sphere (Earth).
-        function haversineDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // metres
-            const φ1 = lat1 * Math.PI/180; // φ, λ in radians
-            const φ2 = lat2 * Math.PI/180;
-            const Δφ = (lat2-lat1) * Math.PI/180;
-            const Δλ = (lon2-lon1) * Math.PI/180;
-
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                      Math.cos(φ1) * Math.cos(φ2) *
-                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-            const d = R * c; // in metres
-            return d;
-        }
-
-        // Calculates the maximum distance (in meters) between any two participants
         function calculateMaxSpread(participants) {
             let maxDistance = 0;
             if (participants.length < 2) return 0;
@@ -572,12 +571,11 @@
                 
                 const center = calculateGeometricCenter(validParticipants);
                 
-                // --- NEW DYNAMIC RADIUS CALCULATION ---
+                // Calculate dynamic radius for Landmark API (max half spread, min 5km, max 20km)
                 const maxSpread = calculateMaxSpread(validParticipants);
-                // Use half the maximum distance between the two furthest friends, with a max cap of 20km for performance
-                const dynamicRadius = Math.min(Math.floor(maxSpread / 2), 20000); 
+                const dynamicRadius = Math.max(5000, Math.min(Math.floor(maxSpread / 2), 20000)); 
                 
-                showStatus(`Step 2/3: Finding nearby landmarks within a ${formatDistance(dynamicRadius)} radius using Latlong.ai Landmark API...`, false);
+                showStatus(`Step 2/3: Finding nearby landmarks within a ${formatDistance(dynamicRadius, false)} radius using Latlong.ai Landmark API...`, false);
                 
                 // 2. Get Landmarks around the geometric center using the dynamic radius
                 const landmarkData = await getLandmarks(center.lat, center.lon, dynamicRadius);
@@ -588,7 +586,8 @@
                 potentialLocations.push({ 
                     name: `Theoretical Geometric Center`, 
                     lat: center.lat, 
-                    lon: center.lon 
+                    lon: center.lon,
+                    isCentroid: true
                 });
 
                 // Add the found landmarks
@@ -614,46 +613,65 @@
                     let validLocation = true;
                     const travelDetails = [];
                     
-                    // For each potential location, calculate distance from ALL origins (one at a time)
                     for (let j = 0; j < validParticipants.length; j++) {
                         const p = validParticipants[j];
                         const singleOrigin = `${p.lat},${p.lon}`;
 
                         const singleResult = await getDistanceMatrix(singleOrigin, destinationCoordinate, 'driving');
                         
-                        if (singleResult.status === 'OK') {
-                            locationTotalDistance += singleResult.distance;
-                            locationMaxDuration = Math.max(locationMaxDuration, singleResult.duration);
+                        let finalDistance = singleResult.distance;
+                        let finalDuration = singleResult.duration;
+                        let isRouted = (singleResult.status === 'OK');
 
-                            travelDetails.push({
-                                displayName: p.displayName,
-                                distance: singleResult.distance,
-                                duration: singleResult.duration
-                            });
-                        } else {
+                        // FALLBACK LOGIC: If Distance Matrix fails (ROUTE_NOT_FOUND, NETWORK_ERROR, etc.), use Haversine distance.
+                        if (!isRouted) {
+                            finalDistance = haversineDistance(p.lat, p.lon, location.lat, location.lon);
+                            finalDuration = Infinity; // Cannot accurately estimate time without a route
+                        }
+                        
+                        locationTotalDistance += finalDistance;
+                        // Max duration only tracks valid routed times. If time is Infinity, maxDuration doesn't update.
+                        if (finalDuration !== Infinity) {
+                            locationMaxDuration = Math.max(locationMaxDuration, finalDuration);
+                        }
+
+                        travelDetails.push({
+                            displayName: p.displayName,
+                            distance: finalDistance,
+                            duration: finalDuration,
+                            isRouted: isRouted
+                        });
+                        
+                        // If any participant fails to get a routed distance, flag location as potentially incomplete
+                        if (!isRouted) {
                             validLocation = false;
-                            travelDetails.push({ displayName: p.displayName, distance: Infinity, duration: Infinity });
-                            // Optimization: if one participant cannot reach, skip location entirely
-                            break; 
                         }
                     }
 
-                    if (validLocation) {
-                        results.push({
-                            rank: 0, // Placeholder, assigned later
-                            placeName: location.name,
-                            lat: location.lat,
-                            lon: location.lon,
-                            totalDistance: locationTotalDistance,
-                            maxDuration: locationMaxDuration,
-                            travelDetails: travelDetails
-                        });
-                    }
+                    results.push({
+                        rank: 0, // Placeholder, assigned later
+                        placeName: location.name,
+                        lat: location.lat,
+                        lon: location.lon,
+                        totalDistance: locationTotalDistance, // Key metric for ranking
+                        maxDuration: locationMaxDuration,
+                        travelDetails: travelDetails,
+                        isCentroid: location.isCentroid || false,
+                        allRouted: validLocation // True if ALL participants got a routed distance
+                    });
                 }
 
                 // 4. Sort and Display Results
+                // Primary Sort: Total Distance. Secondary Sort: Places with successful routing first.
                 const sortedResults = results
-                    .sort((a, b) => a.totalDistance - b.totalDistance)
+                    .sort((a, b) => {
+                        // Prioritize results where ALL routes were successfully calculated
+                        if (a.allRouted !== b.allRouted) {
+                            return a.allRouted ? -1 : 1; 
+                        }
+                        // Then sort by total distance
+                        return a.totalDistance - b.totalDistance;
+                    })
                     .slice(0, 5); // Show top 5
 
                 displayResults(sortedResults, validParticipants);
@@ -682,30 +700,34 @@
             const initialCenter = results[0];
             initMap(initialCenter.lat, initialCenter.lon);
 
-            // Add participant markers
-            validParticipants.forEach(p => {
-                addMarker(p.lat, p.lon, `**${p.displayName}** (Origin)`, 'origin');
-            });
-            
-            // Track map bounds
+            // Track map bounds (Include all locations and participants for accurate zoom)
             const bounds = L.latLngBounds([]);
 
+            // 1. Add participant markers and update bounds
+            validParticipants.forEach(p => {
+                addMarker(p.lat, p.lon, `**${p.displayName}** (Origin: ${p.homeLocality})`, 'origin');
+                bounds.extend([p.lat, p.lon]);
+            });
+            
             results.forEach((location, index) => {
                 location.rank = index + 1;
                 
-                // Add Marker for the location
-                const markerType = index === 0 ? 'center' : 'landmark';
-                addMarker(location.lat, location.lon, `**#${index + 1} ${location.placeName}**<br>Max Travel: ${formatTime(location.maxDuration)}`, markerType);
+                // 2. Add Location Marker and update bounds
+                const markerType = location.isCentroid ? 'center' : 'landmark';
+                addMarker(location.lat, location.lon, `**#${index + 1} ${location.placeName}**<br>Total Distance: ${formatDistance(location.totalDistance)}`, markerType);
                 bounds.extend([location.lat, location.lon]);
 
 
                 let detailsHtml = location.travelDetails.map(d => `
                     <tr>
                         <td class="px-2 py-1 text-sm text-gray-700 font-medium">${d.displayName}</td>
-                        <td class="px-2 py-1 text-sm text-gray-600">${formatDistance(d.distance)}</td>
-                        <td class="px-2 py-1 text-sm text-gray-600">${formatTime(d.duration)}</td>
+                        <td class="px-2 py-1 text-sm ${d.isRouted ? 'text-gray-600' : 'text-red-600 font-semibold'}">${formatDistance(d.distance, d.isRouted)}</td>
+                        <td class="px-2 py-1 text-sm ${d.isRouted ? 'text-gray-600' : 'text-red-600 font-semibold'}">${d.isRouted ? formatTime(d.duration) : 'No Route Found'}</td>
                     </tr>
                 `).join('');
+                
+                const centroidNote = location.isCentroid ? '<p class="text-sm italic text-indigo-600 mb-2">This is the **Mathematical Center**. Landmark suggestions follow.</p>' : '';
+                const routingWarning = location.allRouted ? '' : '<p class="text-xs font-semibold text-red-600 mt-2">⚠️ Note: Some distances are straight-line (Haversine) as a precise driving route could not be found for all origins.</p>';
 
                 const cardHtml = `
                     <div class="p-5 border-2 rounded-xl transition-shadow ${index === 0 ? 'bg-green-50 border-green-300 shadow-lg' : 'bg-white border-gray-200 shadow-md hover:shadow-lg'}">
@@ -715,8 +737,9 @@
                                 ${index === 0 ? '<span class="isochrone-badge bg-green-500">BEST ACCESS</span>' : ''}
                             </h3>
                         </div>
+                        ${centroidNote}
                         <p class="text-gray-600 mb-2 text-sm italic">Lat: ${location.lat.toFixed(5)}, Lon: ${location.lon.toFixed(5)}</p>
-                        <p class="text-gray-600 mb-4 text-sm font-medium">Worst-case travel time: **${formatTime(location.maxDuration)}** (The longest journey to the spot).</p>
+                        <p class="text-gray-600 mb-4 text-sm font-medium">Worst-case travel time (Routed): **${location.maxDuration !== 0 ? formatTime(location.maxDuration) : 'N/A (No Routed Times Found)'}**.</p>
                     
                         <div class="overflow-x-auto">
                             <table class="min-w-full travel-table rounded-lg">
@@ -731,20 +754,20 @@
                                     ${detailsHtml}
                                 </tbody>
                             </table>
+                            ${routingWarning}
                         </div>
                     </div>
                 `;
                 RECOMMENDATIONS_LIST.innerHTML += cardHtml;
             });
             
-            // Extend bounds to include all participants
-            validParticipants.forEach(p => bounds.extend([p.lat, p.lon]));
-            
-            // Adjust map view to fit all markers
-            if (validParticipants.length > 1) {
+            // 3. Fit Map to Bounds
+            if (bounds.isValid()) {
                 map.fitBounds(bounds, { padding: [50, 50] });
+            } else {
+                 // Fallback if only one or no points are valid
+                map.setView([initialCenter.lat, initialCenter.lon], 10);
             }
-
 
             RESULTS_SECTION.classList.remove('hidden');
             // Force map redraw after section becomes visible
@@ -755,7 +778,8 @@
         }
 
         // =========================================================================
-        // FIREBASE/AUTH/GROUP LISTENERS (State Management)
+        // FIREBASE/AUTH/GROUP LISTENERS (State Management) - Omitted for brevity (unchanged)
+        // (The code below is unchanged from the previous version, ensuring state management works)
         // =========================================================================
         
         async function loadUserProfile() {
@@ -793,7 +817,6 @@
                 const coords = await geocodeAddress(homeLocality);
 
                 if (!coords) {
-                    // This block is technically redundant due to the throw in geocodeAddress, but kept for safety
                     throw new Error("Could not find precise coordinates for the provided Pin Code/Address. Please ensure you entered the Pin Code followed by the City/Locality (e.g., 560013, Bengaluru).");
                 }
 
@@ -813,7 +836,6 @@
                 setView('main', userProfile.currentGroupId ? 'session' : 'create');
             } catch (error) {
                 console.error("Error saving profile:", error);
-                // Ensure the error message includes the specific geocoding instruction if it's a known failure type
                 const displayMessage = error.message.includes("coordinates") ? 
                     error.message : 
                     `Error saving profile: ${error.message}`;
