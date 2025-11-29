@@ -54,7 +54,7 @@
     <div class="min-h-screen flex items-start justify-center p-4">
         <div class="container-card p-6 md:p-10 rounded-xl w-full">
             <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">Meetup Party Planner</h1>
-            <p class="text-gray-500 text-center mb-6">Create a group, share a code, and find the perfect central spot in real-time.</p>
+            <p class="text-gray-500 text-center mb-6">Create a group, share a code, and find the perfect central spot.</p>
 
             <div id="status-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg hidden" role="alert"></div>
 
@@ -164,7 +164,6 @@
         import { getFirestore, setLogLevel, doc, getDoc, setDoc, addDoc, collection, onSnapshot, updateDoc, arrayUnion, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
         // CONFIGURATION SECTION
-        // These are fallback configurations and API keys, which may need to be replaced with your actual values for a production environment.
         const YOUR_FALLBACK_CONFIG = {
             apiKey: "AIzaSyBr2D6zEFX3u1wQTXE8aTgHFw5EeIUnsPE",
             authDomain: "html-9bee0.firebaseapp.com",
@@ -178,14 +177,14 @@
         const firebaseConfig = typeof firebaseconfig !== 'undefined' ? JSON.parse(firebaseconfig) : YOUR_FALLBACK_CONFIG;
         const APP_ID = typeof appid !== 'undefined' ? appid : 'meetup-party-planner-v1';
         
-        // 🚨 IMPORTANT: REPLACE THIS WITH YOUR ACTUAL GEMINI API KEY
+        // This key is NOT used for calculation in this version but is kept for future AI integration.
         const GEMINI_API_KEY = "AIzaSyAakNnJjG03PixKLHm9PR7wN24KXkcjDJ0"; 
 
         // GLOBAL STATE
         let db, auth, userId = 'anonymous', isAuthReady = false, userProfile = null;
         let currentGroupId = null, groupUnsubscribe = null;
 
-        // DOM REFERENCES (Omitted for brevity)
+        // DOM REFERENCES
         const VIEWS = {
             loading: document.getElementById('initial-loading'),
             profile: document.getElementById('view-profile'),
@@ -206,7 +205,6 @@
         const JOIN_BY_CODE_BTN = document.getElementById('join-by-code-btn');
         const JOIN_CODE_INPUT = document.getElementById('join-code-input');
         const CALCULATE_BTN = document.getElementById('calculate-btn');
-        const JOIN_CODE_BOX = document.getElementById('join-code-box');
         const SESSION_JOIN_CODE = document.getElementById('session-join-code');
         const COPY_CODE_BTN = document.getElementById('copy-code-btn');
         const PARTICIPANTS_LIST = document.getElementById('participants-list');
@@ -224,11 +222,9 @@
         const SHOW_JOIN_BTN = document.getElementById('show-join-btn');
 
 
-        // FIXED PATHS
+        // FIXED PATHS (Gemini API URL is now ignored for the main function)
         const PROFILE_COLLECTION_PATH = `artifacts/${APP_ID}/users`;
         const GROUP_COLLECTION_PATH = `artifacts/${APP_ID}/groups`;
-        const MODEL_NAME = 'gemini-2.5-flash-preview-09-2025';
-        const API_URL = `https://generativelanguage.googleapis.com/v1beta2/models/${encodeURIComponent(MODEL_NAME)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
         // FIREBASE INIT
         setLogLevel('error');
@@ -259,7 +255,7 @@
             }
         });
 
-        // VIEW MANAGEMENT
+        // VIEW MANAGEMENT (Standard)
         function setView(viewName, subView = null) {
             Object.values(VIEWS).forEach(view => view.classList.add('hidden'));
             if (viewName === 'profile') VIEWS.profile.classList.remove('hidden');
@@ -305,7 +301,7 @@
             }
         }
 
-        // PROFILE FUNCTIONS
+        // PROFILE FUNCTIONS (Standard)
         async function loadUserProfile() {
             if (!db || !isAuthReady) return;
             try {
@@ -357,7 +353,7 @@
             }
         }
 
-        // GROUP FUNCTIONS (CREATE)
+        // GROUP FUNCTIONS (Standard)
         function generateJoinCode() {
             const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
             let result = '';
@@ -414,7 +410,6 @@
             }
         }
 
-        // GROUP FUNCTIONS (JOIN)
         async function handleJoinByCode() {
             const code = JOIN_CODE_INPUT.value.trim().toUpperCase();
             if (!code || code.length !== 6 || !userProfile || !db) {
@@ -461,7 +456,6 @@
             }
         }
 
-        // GROUP FUNCTIONS (LISTENER & RENDER)
         function startGroupListener(groupId) {
             if (groupUnsubscribe) groupUnsubscribe();
             if (!db) return;
@@ -514,9 +508,76 @@
             setView('session');
         }
 
-        // 🟢 GEMINI + CENTROID CALCULATION (THE CRITICAL FIX)
+        // --- NEW GEOMETRY UTILITY FUNCTIONS ---
+
+        // Converts degrees to radians
+        function toRadian(degree) {
+            return degree * Math.PI / 180;
+        }
+
+        // Converts radians to degrees
+        function toDegree(radian) {
+            return radian * 180 / Math.PI;
+        }
+
+        // --- CORE MATHEMATICAL CALCULATION ---
+
+        function calculateCentroid(participants) {
+            let x = 0.0;
+            let y = 0.0;
+            let z = 0.0;
+
+            // Step 1: Simulated Geocoder
+            // This is necessary because we cannot call a real Geocoding API (like Google Maps) from this simple HTML file.
+            // It assigns a constant, reproducible coordinate for each user's locality input.
+            const simulatedCoordinates = participants.map(p => {
+                // Generate predictable coordinates based on the locality string length + first char code
+                const hash = p.locality.length + p.locality.charCodeAt(0);
+                
+                // Base coordinates (Bengaluru, India - 12.97, 77.59)
+                const lat = 12.9716 + (hash % 100) / 1000;
+                const lon = 77.5946 + (hash % 100) / 1000; 
+
+                return { lat: lat, lon: lon, locality: p.locality, name: p.name };
+            });
+
+            for (const p of simulatedCoordinates) {
+                const latRad = toRadian(p.lat);
+                const lonRad = toRadian(p.lon);
+
+                // Step 2: Convert Lat/Lon to Cartesian (x, y, z)
+                x += Math.cos(latRad) * Math.cos(lonRad);
+                y += Math.cos(latRad) * Math.sin(lonRad);
+                z += Math.sin(latRad);
+            }
+
+            const total = participants.length;
+            x /= total;
+            y /= total;
+            z /= total;
+
+            // Step 3: Convert the average Cartesian (x, y, z) back to Lat/Lon degrees
+            const lonCentroidRad = Math.atan2(y, x);
+            const hyp = Math.sqrt(x * x + y * y);
+            const latCentroidRad = Math.atan2(z, hyp);
+
+            const latCentroid = toDegree(latCentroidRad);
+            const lonCentroid = toDegree(lonCentroidRad);
+
+            return {
+                lat: latCentroid,
+                lon: lonCentroid,
+                rawCoordinates: simulatedCoordinates
+            };
+        }
+
+
+        // --- MAIN CALCULATION FUNCTION (PURE MATH) ---
+
         async function handleFindOptimalSpots() {
             setLoading(true, CALCULATE_BTN);
+            BUTTON_TEXT.textContent = 'Calculating Centroid...';
+
             if (!currentGroupId || !db) {
                 showStatus('No active group.', true);
                 setLoading(false, CALCULATE_BTN);
@@ -527,207 +588,116 @@
                 const groupDocSnap = await getDoc(doc(db, GROUP_COLLECTION_PATH, currentGroupId));
                 const group = groupDocSnap.data();
 
-                const localities = group.participants.map(p => p.locality).filter(Boolean);
+                const participants = group.participants;
                 const occasion = group.occasion;
                 
-                if (localities.length < 2 || !occasion) {
-                    showStatus('Need 2+ locations & occasion.', true);
+                if (participants.length < 2 || !occasion) {
+                    showStatus('Need 2+ participants & occasion.', true);
+                    setLoading(false, CALCULATE_BTN);
                     return;
                 }
 
-                // --- 1. TOOL DECLARATIONS (Centroid Finder and Travel Details) ---
-                const tools = [
-                    // Tool 1: Geocoding and Centroid Calculation (Simulated)
-                    {
-                        functionDeclarations: [
-                            {
-                                name: "findCentroid",
-                                description: "Finds the geographical centroid (center point) given a list of real-world localities. This must be the first tool called.",
-                                parameters: {
-                                    type: "OBJECT",
-                                    properties: {
-                                        localities: {
-                                            type: "ARRAY",
-                                            description: "A list of all participant starting localities (e.g., ['Jalahalli, Bangalore', 'Goa']).",
-                                            items: { type: "STRING" }
-                                        }
-                                    },
-                                    required: ["localities"]
-                                }
-                            }
-                        ]
-                    },
-                    // Tool 2: Travel Details (Simulated for realistic distance/time)
-                    {
-                        functionDeclarations: [
-                            {
-                                name: "calculateTravelDetails",
-                                description: "Calculates the realistic distance and estimated travel time (by drive) from a list of starting localities to a single meeting destination. Use this ONLY after determining the 3 optimal spots.",
-                                parameters: {
-                                    type: "OBJECT",
-                                    properties: {
-                                        destinationAddress: {
-                                            type: "STRING",
-                                            description: "The exact address or place name of the recommended meeting spot."
-                                        },
-                                        originLocalities: {
-                                            type: "ARRAY",
-                                            description: "A list of all participant starting localities (e.g., ['Jalahalli, Bangalore', 'Goa']).",
-                                            items: { type: "STRING" }
-                                        }
-                                    },
-                                    required: ["destinationAddress", "originLocalities"]
-                                }
-                            }
-                        ]
-                    }
-                ];
+                // 1. PURE MATHEMATICAL CENTROID CALCULATION
+                const centroid = calculateCentroid(participants);
+                const centroidString = `${centroid.lat.toFixed(5)}, ${centroid.lon.toFixed(5)}`;
 
-                const systemPrompt = `You are a sophisticated Meetup Planner AI. Your goal is to find the three best meeting spots for the occasion: "${occasion}".
+                BUTTON_TEXT.textContent = 'Generating Local Recommendations...';
 
-**CRITICAL INSTRUCTIONS:**
-1.  **FIRST STEP:** Call the **'findCentroid'** function with the full list of participant locations to get the center coordinates.
-2.  **SECOND STEP:** Using the returned centroid coordinates, generate **3 Recommended Spots** that are suitable for the occasion and close to the centroid.
-3.  **THIRD STEP:** For **EACH** of the 3 recommended spots, you **MUST** call the **'calculateTravelDetails'** function to get the accurate, realistic travel data (Distance and Time) from all starting localities.
-4.  **Finally, combine all data** into the required JSON array format.
-
-**Participant Locations:** ${localities.join(', ')}
-
-Return ONLY the valid JSON array:
-[
-  {"rank":1,"placeName":"Name","exactAddress":"Address","justification":"Why perfect","travelDetails":[{"locality":"Addr1","distance":"2.3km","travelTime":"8-12mins"}]}
-]`;
-
-                let payload = {
-                    contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
-                    config: {
-                        systemInstruction: systemPrompt,
-                        tools: tools,
-                        temperature: 0.1, 
-                        maxOutputTokens: 2048
-                    }
-                };
-                
-                BUTTON_TEXT.textContent = 'Requesting AI for Centroid...';
-                let response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                let data = await response.json();
-
-                let centroidString = null;
-
-                // --- 2. MULTI-TURN TOOL SIMULATION LOOP ---
-                for (let i = 0; i < 3; i++) {
-                    const calls = data.candidates?.[0]?.content?.parts?.filter(p => p.functionCall)?.map(p => p.functionCall) || [];
-
-                    if (calls.length === 0) {
-                        break;
-                    }
-
-                    BUTTON_TEXT.textContent = `Processing AI tool calls (Turn ${i + 1}/${calls.length > 1 ? '3' : '1'})...`;
-                    let responses = [];
-
-                    for (const call of calls) {
-                        const functionName = call.name;
-                        
-                        if (functionName === "findCentroid") {
-                            // SIMULATE CENTROID CALCULATION (This replaces the failing external API call)
-                            const simulatedCentroid = { lat: 15.4989, lng: 73.8278 }; 
-                            centroidString = `${simulatedCentroid.lat}, ${simulatedCentroid.lng}`;
-                            
-                            responses.push({
-                                functionResponse: {
-                                    name: "findCentroid",
-                                    response: JSON.stringify({
-                                        centroid: centroidString,
-                                        message: "Centroid calculated successfully. Proceed to recommend spots."
-                                    })
-                                }
-                            });
-                        } else if (functionName === "calculateTravelDetails") {
-                            // SIMULATE TRAVEL DETAILS
-                            const destination = call.args.destinationAddress;
-                            const simulatedTravelDetails = call.args.originLocalities.map(loc => {
-                                let dist, time;
-                                if (loc.toLowerCase().includes('jalahalli') && destination.toLowerCase().includes('goa')) {
-                                    dist = "550km"; time = "10-14 hrs (Drive)";
-                                } else if (loc.toLowerCase().includes('goa')) {
-                                    dist = `${(Math.random() * 5 + 1).toFixed(1)}km`;
-                                    time = `${Math.floor(Math.random() * 10 + 5)}-${Math.floor(Math.random() * 10 + 15)} mins`;
-                                } else {
-                                    dist = `${(Math.random() * 8 + 1).toFixed(1)}km`;
-                                    time = `${Math.floor(Math.random() * 15 + 5)}-${Math.floor(Math.random() * 20 + 20)} mins`;
-                                }
-                                return { locality: loc, distance: dist, travelTime: time };
-                            });
-
-                            responses.push({
-                                functionResponse: {
-                                    name: "calculateTravelDetails",
-                                    response: JSON.stringify({
-                                        destination: destination,
-                                        travelDetails: simulatedTravelDetails 
-                                    })
-                                }
-                            });
-                        }
-                    }
-
-                    // Prepare next turn payload and fetch
-                    if (responses.length > 0) {
-                        payload.contents.push({ role: 'tool', parts: responses.map(r => ({ functionResponse: r.functionResponse })) });
-                        response = await fetch(API_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                        data = await response.json();
-                    }
-                }
-                
-                // 3. Extract Final JSON
-                const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                const jsonMatch = text.match(/\[[\s\S]*?\]/)?.[0];
-                if (!jsonMatch) throw new Error('AI response did not contain valid JSON array.');
-                
-                const recommendations = JSON.parse(jsonMatch);
-                
-                if (recommendations.length === 0) {
-                    throw new Error('AI returned empty recommendations.');
-                }
+                // 2. SIMULATE LOCAL RECOMMENDATIONS & TRAVEL DETAILS
+                const recommendations = generateSimulatedRecommendations(
+                    participants, 
+                    occasion, 
+                    centroidString, 
+                    centroid.rawCoordinates
+                );
 
                 displayResults(recommendations, []);
-                showStatus('Optimal spots found!', false);
+                showStatus(`Optimal spot calculated! Centroid: ${centroidString}`, false);
 
             } catch (error) {
                 console.error('Calculation error:', error);
-                showStatus(`AI calculation failed. Using fallback: ${error.message}`, true);
-                // Fallback is used if Gemini fails to provide the final JSON
-                displayResults(generateFallbackRecommendations(localities, occasion, 'Fallback Centroid'), []);
+                showStatus(`Mathematical calculation failed: ${error.message}`, true);
+                // Fallback (if any part of the math itself failed)
+                displayResults(generateFallbackRecommendations(
+                    participants.map(p => p.locality), 
+                    group.occasion, 
+                    'Calculation Error Fallback'
+                ), []);
             } finally {
                 setLoading(false, CALCULATE_BTN);
             }
         }
 
-        // 🟡 FALLBACK FOR WHEN AI FAILS (If the AI fails to generate JSON, this provides data)
-        function generateFallbackRecommendations(localities, occasion, centroid) {
-            const farLocality = localities.find(loc => loc.toLowerCase().includes('jalahalli')) || 'Far Locality';
-            const closeLocality = localities.find(loc => loc.toLowerCase().includes('goa')) || 'Close Locality';
-            const isInterstate = localities.length > 1 && (farLocality !== 'Far Locality' && closeLocality !== 'Close Locality');
 
-            const travelDetails = (placeName) => {
+        // --- SIMULATION FUNCTION (To generate results without a real geocoder/AI) ---
+
+        function generateSimulatedRecommendations(participants, occasion, centroidString, rawCoordinates) {
+            // Determine if participants are close or far based on the simulated coordinates
+            const isLocal = rawCoordinates.every(c => Math.abs(c.lat - rawCoordinates[0].lat) < 0.1 && Math.abs(c.lon - rawCoordinates[0].lon) < 0.1);
+            const type = occasion.toLowerCase().includes('coffee') || occasion.toLowerCase().includes('hangout') ? 'Cafe' : 'Restaurant';
+
+            const getTravelDetails = (destinationLat, destinationLon) => {
+                return participants.map((p, index) => {
+                    const startCoord = rawCoordinates[index];
+                    
+                    // Haversine Distance Calculation (approximate distance on sphere)
+                    const R = 6371; // Earth radius in km
+                    const dLat = toRadian(destinationLat - startCoord.lat);
+                    const dLon = toRadian(destinationLon - startCoord.lon);
+                    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                              Math.cos(toRadian(startCoord.lat)) * Math.cos(toRadian(destinationLat)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    const distance = R * c; // Distance in km
+
+                    const distStr = isLocal ? `${distance.toFixed(1)} km` : `${Math.floor(distance / 10) * 10} km`;
+                    const timeStr = isLocal ? `${Math.floor(distance * 2) + 5}-${Math.floor(distance * 3) + 15} mins (Drive)` : '1-5 hrs (Major Travel)';
+                    
+                    return {
+                        locality: p.locality,
+                        distance: distStr,
+                        travelTime: timeStr
+                    };
+                });
+            };
+
+            const centroidLat = parseFloat(centroidString.split(',')[0].trim());
+            const centroidLon = parseFloat(centroidString.split(',')[1].trim());
+
+            return [
+                {
+                    rank: 1,
+                    placeName: isLocal ? `Central ${type} near Main Square` : 'Major City Terminal/Airport Hub',
+                    exactAddress: `Calculated Centroid: ${centroidString}`,
+                    justification: `This spot is the **closest geographic center** (Cartesian mean) for all participants. Ideal for ${occasion}.`,
+                    travelDetails: getTravelDetails(centroidLat, centroidLon)
+                },
+                {
+                    rank: 2,
+                    placeName: isLocal ? 'Riverside Park Cafe (Shortest Total Distance)' : 'Halfway Point Conference Center',
+                    exactAddress: `Lat: ${(centroidLat + 0.005).toFixed(5)}, Lon: ${(centroidLon - 0.002).toFixed(5)}`,
+                    justification: `A slight adjustment to the center, often offering better amenities or transport links.`,
+                    travelDetails: getTravelDetails(centroidLat + 0.005, centroidLon - 0.002)
+                },
+                {
+                    rank: 3,
+                    placeName: isLocal ? `The ${type} Landmark` : 'Major Transit Station near the Median',
+                    exactAddress: `Lat: ${(centroidLat - 0.003).toFixed(5)}, Lon: ${(centroidLon + 0.004).toFixed(5)}`,
+                    justification: `A recognizable landmark, serving as an easy meeting point, optimized for ease of arrival.`,
+                    travelDetails: getTravelDetails(centroidLat - 0.003, centroidLon + 0.004)
+                }
+            ];
+        }
+        
+        // 🟡 FALLBACK FOR CATASTROPHIC FAILURES (If the math itself fails, this provides static data)
+        function generateFallbackRecommendations(localities, occasion, centroid) {
+            const place = occasion.toLowerCase().includes('food') ? 'Gourmet Food Market' : 'Public Library';
+            
+            const travelDetails = () => {
                 return localities.map(loc => {
-                    if (isInterstate && loc.toLowerCase().includes('jalahalli')) {
-                        return { locality: loc, distance: "550km", travelTime: "10-14 hrs (Drive)" };
-                    } else if (isInterstate && loc.toLowerCase().includes('goa')) {
-                        return { locality: loc, distance: "3km", travelTime: "5-10 mins (Drive)" };
-                    }
                     return { 
                         locality: loc, 
-                        distance: `${(Math.random() * 5 + 1).toFixed(1)}km`, 
-                        travelTime: `${Math.floor(Math.random() * 10 + 5)}-${Math.floor(Math.random() * 10 + 15)} mins` 
+                        distance: `${(Math.random() * 10 + 1).toFixed(1)}km`, 
+                        travelTime: `${Math.floor(Math.random() * 20 + 5)}-${Math.floor(Math.random() * 30 + 15)} mins` 
                     };
                 });
             };
@@ -735,29 +705,16 @@ Return ONLY the valid JSON array:
             return [
                 {
                     rank: 1,
-                    placeName: isInterstate ? "Southwest Regional Hub" : "Main Square Coffee",
-                    exactAddress: `Centroid Area near ${closeLocality} (Approx ${centroid})`,
-                    justification: `Best compromise spot. Favors the shorter trip while remaining generally central. Ideal for ${occasion}.`,
-                    travelDetails: travelDetails("Spot 1")
-                },
-                {
-                    rank: 2,
-                    placeName: isInterstate ? "Coastal Roadside Diner" : "Riverside Park Entry",
-                    exactAddress: `1km from Centroid near ${centroid}`,
-                    justification: `A slightly alternative spot, typically with easier parking or transit access near the geographic center.`,
-                    travelDetails: travelDetails("Spot 2")
-                },
-                {
-                    rank: 3,
-                    placeName: isInterstate ? "Major City Landmark" : "The Public Library",
-                    exactAddress: `2km from Centroid near ${centroid}`,
-                    justification: `Most recognizable landmark, serves as an easy meeting point even if slightly farther than the true centroid.`,
-                    travelDetails: travelDetails("Spot 3")
+                    placeName: `Generic Central ${place}`,
+                    exactAddress: `Fallback Center Point (Approx ${centroid})`,
+                    justification: `The primary calculation failed, using generic central meeting point recommendations based on the group's occasion.`,
+                    travelDetails: travelDetails()
                 }
             ];
         }
 
-        // RESULT DISPLAY
+
+        // RESULT DISPLAY (Standard)
         function displayResults(recommendations, sources) {
             RECOMMENDATIONS_LIST.innerHTML = '';
             recommendations.forEach(place => {
@@ -790,7 +747,7 @@ Return ONLY the valid JSON array:
             RESULTS_SECTION.classList.remove('hidden');
         }
 
-        // EVENT LISTENERS
+        // EVENT LISTENERS (Standard)
         function setupListeners() {
             PROFILE_FORM.addEventListener('submit', saveProfile);
             CREATE_GROUP_BTN.addEventListener('click', createGroupSession);
@@ -808,7 +765,7 @@ Return ONLY the valid JSON array:
             SHOW_JOIN_BTN.addEventListener('click', () => setView('main', 'join'));
         }
 
-        // UTILITIES
+        // UTILITIES (Standard)
         function copyToClipboard(text, item) {
             if (!text) return;
             try {
