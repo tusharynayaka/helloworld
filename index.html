@@ -477,9 +477,12 @@
             }
         }
 
+        const LATLONG_API_KEY = "eyJhbGciOiJIUzI1NiI..."; // Your JWT
+
         async function getLandmarks(lat, lon, radius) {
-            // Using dynamic radius in meters
-            const endpoint = `${LANDMARK_URL}?latitude=${lat}&longitude=${lon}&radius=${radius}`; 
+        const url = `https://apihub.latlong.ai/v4/landmarks.json?latitude=${lat}&longitude=${lon}&radius=${radius}&api_key=${LATLONG_API_KEY}`;
+    // ... rest of the fetch logic
+
             
             try {
                 const response = await fetch(endpoint, {
