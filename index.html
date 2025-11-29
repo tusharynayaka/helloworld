@@ -6,7 +6,6 @@
     <title>Optimal Meetup Finder</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
         crossorigin=""/>
     <style>
         /* Custom styles for map and loading state */
@@ -55,9 +54,10 @@
         .hidden { display: none !important; }
 
         /* Custom Leaflet Icons */
-        .origin-marker { background-color: #ef4444; border: 3px solid white; }
-        .center-marker { background-color: #4f46e5; border: 3px solid white; }
-        .landmark-marker { background-color: #10b981; border: 3px solid white; }
+        .custom-div-icon { border: none !important; background: transparent !important; }
+        .origin-marker > div { background-color: #ef4444; border: 3px solid white; }
+        .center-marker > div { background-color: #4f46e5; border: 3px solid white; }
+        .landmark-marker > div { background-color: #10b981; border: 3px solid white; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -201,9 +201,7 @@
 
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20n6a9KxI6vD9qf8yA8Gj+7V2eGshAeM0z50/f+mzN6M="
-        crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
@@ -223,8 +221,8 @@
             appId: "YOUR_APP_ID"
         };
 
-        // --- Latlong.ai API Configuration ---
-        const LATLONG_API_TOKEN = 'YOUR_LATLONG_API_TOKEN'; // Securely load this token
+        // --- Latlong.ai API Configuration (REPLACE WITH YOUR TOKEN) ---
+        const LATLONG_API_TOKEN = 'YOUR_LATLONG_API_TOKEN'; 
         const GEOCODE_URL = 'https://api.latlong.ai/geocode';
         const DISTANCE_URL = 'https://api.latlong.ai/distance-matrix';
         const LANDMARK_URL = 'https://api.latlong.ai/landmarks';
@@ -292,7 +290,7 @@
         const { getAuth, signInAnonymously, onAuthStateChanged } = firebase.auth;
 
         // =========================================================================
-        // 2. UTILITY FUNCTIONS (Omitted in prompt, defined here)
+        // 2. UTILITY FUNCTIONS
         // =========================================================================
 
         function setView(mainView, subView = null) {
@@ -412,8 +410,8 @@
             }
 
             const customIcon = L.divIcon({
-                className: `custom-div-icon ${type}-marker`,
-                html: `<div style="background-color: ${color}; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; justify-content: center; align-items: center;"></div>`,
+                className: `custom-div-icon`,
+                html: `<div class="${type}-marker" style="width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; justify-content: center; align-items: center;"></div>`,
                 iconSize: [size, size],
                 iconAnchor: [size / 2, size]
             });
@@ -426,7 +424,7 @@
         }
 
         // =========================================================================
-        // 3. LATLONG.AI API WRAPPERS (Part 1 & 2)
+        // 3. LATLONG.AI API WRAPPERS
         // =========================================================================
 
         async function geocodeAddress(address) {
@@ -530,7 +528,7 @@
             }
         }
         
-        // --- Haversine and Center Calculation Utilities (Part 2) ---
+        // --- Haversine and Center Calculation Utilities ---
 
         function haversineDistance(lat1, lon1, lat2, lon2) {
             // Implements Haversine distance in meters
@@ -583,7 +581,7 @@
 
 
         // =========================================================================
-        // 4. CORE CALCULATION LOGIC (Part 2)
+        // 4. CORE CALCULATION LOGIC
         // =========================================================================
 
         async function findOptimalMeetupLocation() {
@@ -726,7 +724,7 @@
             }
         }
         
-        // --- Display Functions (Part 2) ---
+        // --- Display Functions ---
 
         function displayResults(results, validParticipants) {
             RECOMMENDATIONS_LIST.innerHTML = '';
@@ -737,13 +735,6 @@
                 return;
             }
             
-            // Check if L (Leaflet) is defined before trying to initialize the map
-            if (typeof L === 'undefined') {
-                RECOMMENDATIONS_LIST.innerHTML = '<p class="text-red-500 font-bold">Error: Map library (Leaflet) failed to load. Cannot display map or markers.</p>';
-                RESULTS_SECTION.classList.remove('hidden');
-                return;
-            }
-
             // Initialize Map
             const initialCenter = results[0];
             initMap(initialCenter.lat, initialCenter.lon);
@@ -827,7 +818,7 @@
 
 
         // =========================================================================
-        // 5. FIREBASE & GROUP MANAGEMENT LOGIC (Part 2 & 3)
+        // 5. FIREBASE & GROUP MANAGEMENT LOGIC
         // =========================================================================
         
         async function loadUserProfile() {
@@ -994,9 +985,9 @@
         }
 
         function handleGroupSnapshot(docSnapshot) {
-            if (map) map.remove(); // Clear the map on any new data load
+            if (map) map.remove(); 
             markers.clearLayers();
-            RESULTS_SECTION.classList.add('hidden'); // Hide old results
+            RESULTS_SECTION.classList.add('hidden'); 
 
             if (!docSnapshot.exists()) {
                 currentGroupId = null;
