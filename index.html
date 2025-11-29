@@ -1,797 +1,110 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meetup Planner Extended (Latlong.ai API)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-          crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
-            crossorigin=""></script>
-    
-    <style>
-        :root { --primary-color: #4f46e5; --secondary-color: #ec4899; }
-        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
-        .container-card { 
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1); 
-            max-width: 90%; 
-            margin: 2rem auto; 
-            background: linear-gradient(145deg, #ffffff, #f0f0f0); 
-            border: 1px solid #e5e7eb; 
-            transition: all 0.3s ease-in-out; 
-        }
-        @media (min-width: 640px) { .container-card { max-width: 800px; } }
-        .submit-button { 
-            transition: all 0.2s ease-in-out; 
-            background-image: linear-gradient(to right top, var(--primary-color), #6366f1); 
-        }
-        .submit-button:hover { opacity: 0.9; transform: translateY(-1px); }
-        .loading-spinner { 
-            border: 4px solid rgba(255, 255, 255, 0.3); 
-            border-top: 4px solid #ffffff; 
-            border-radius: 50%; 
-            width: 1.5rem;
-            height: 1.5rem;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .travel-table th, .travel-table td {
-            padding: 8px;
-            text-align: left;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        .travel-table th {
-            font-weight: 600;
-            color: #4f46e5;
-            background-color: #eef2ff;
-        }
-        .join-code-display {
-            font-family: 'Courier New', monospace;
-            letter-spacing: 4px;
-            font-size: 2rem;
-        }
-        #map-container {
-            height: 400px;
-            border-radius: 8px;
-            margin-top: 1rem;
-            border: 1px solid #ccc;
-        }
-        .isochrone-badge {
-            display: inline-block;
-            background-color: #ec4899;
-            color: white;
-            font-size: 0.75rem;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 8px;
-        }
-        /* Custom Leaflet Icon Styles (must be in the <style> block) */
-        .custom-div-icon {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-sizing: border-box;
-            line-height: 1; /* Adjust to better center the emoji/text */
-            transform: translate(-50%, -100%); /* Center the icon bottom point */
-        }
-    </style>
-</head>
-<body>
-    <div class="min-h-screen flex items-start justify-center p-4">
-        <div class="container-card p-6 md:p-10 rounded-xl w-full">
-            <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">Meetup Planner Extended (Latlong.ai API)</h1>
-            <p class="text-gray-500 text-center mb-6">Uses **Latlong.ai** for accurate distance and landmark suggestions.</p>
-
-            <div class="mt-4 p-3 bg-indigo-100 text-indigo-700 rounded-lg" role="alert">
-                <p class="font-bold">✅ Latlong.ai API Token Loaded</p>
-                <p class="text-sm">Ready for Geocoding, Distance Matrix, and Landmark calculations.</p>
-            </div>
-
-            <div id="status-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg hidden" role="alert"></div>
-
-            <div id="initial-loading" class="text-center py-10">
-                <div class="loading-spinner mx-auto mb-3 border-indigo-500 border-t-indigo-500 w-8 h-8"></div>
-                <p class="text-gray-500">Initializing services...</p>
-            </div>
-
-            <div id="view-profile" class="hidden space-y-4">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Profile Setup Required</h2>
-                <div class="p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg text-sm text-yellow-700">
-                    <p class="font-medium">Welcome!</p>
-                    <p>To join or create a group, please save your unique display name and primary home locality. **Enter your Pin Code followed by the City/Locality Name**.</p>
-                </div>
-                <form id="profile-form" class="space-y-4">
-                    <div>
-                        <label for="profile-name" class="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
-                        <input type="text" id="profile-name" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
-                    </div>
-                    <div>
-                        <label for="home-locality" class="block text-sm font-medium text-gray-700 mb-1">Primary Home Locality/Address</label>
-                        <input type="text" id="home-locality" required placeholder="e.g., 560013, Bengaluru" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
-                    </div>
-                    <button type="submit" id="save-profile-btn" class="w-full text-white font-semibold py-3 rounded-xl bg-pink-500 hover:bg-pink-600 transition">
-                        <span class="flex items-center justify-center">
-                            <span id="profile-button-text">Save Profile & Continue</span>
-                            <div id="profile-loading-indicator" class="loading-spinner hidden ml-3 border-white border-t-white"></div>
-                        </span>
-                    </button>
-                </form>
-            </div>
-
-            <div id="view-main" class="hidden space-y-6">
-                <div class="bg-indigo-50 p-3 rounded-lg flex justify-between items-center text-sm border border-indigo-200">
-                    <p class="font-medium text-indigo-800 truncate">Logged in as <span id="user-display-name" class="font-bold"></span></p>
-                    <button id="go-to-profile" class="text-xs text-indigo-600 hover:text-indigo-900 transition underline ml-4 flex-shrink-0">Edit Profile</button>
-                </div>
-
-                <div class="flex space-x-4">
-                    <button id="show-create-btn" class="flex-1 py-2 font-medium rounded-lg transition-colors border-b-4 border-indigo-500 text-indigo-700 bg-indigo-100 shadow-md">Create Group</button>
-                    <button id="show-join-btn" class="flex-1 py-2 font-medium rounded-lg transition-colors border-b-2 border-gray-300 text-gray-700 hover:bg-gray-100">Join Group</button>
-                </div>
-
-                <div id="view-create" class="space-y-4">
-                    <h2 class="text-xl font-semibold text-gray-700 mb-2">Create New Group</h2>
-                    <select id="occasion-create" required class="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out">
-                        <option value="" disabled selected>Select an occasion</option>
-                        <option value="Cafe or Casual Hangout">Cafe or Casual Hangout</option>
-                        <option value="Fine Dining Restaurant">Fine Dining Restaurant</option>
-                        <option value="Museum or Cultural Site">Museum or Cultural Site</option>
-                        <option value="Public Park or Gardens">Public Park or Gardens</option>
-                        <option value="Major Transit Station">Major Transit Station (Traveler Meetup)</option>
-                    </select>
-                    <button type="button" id="create-group-btn" class="submit-button w-full text-white font-semibold py-3 rounded-xl">Create Group & Get Code</button>
-                </div>
-
-                <div id="view-join" class="hidden space-y-4">
-                    <h2 class="text-xl font-semibold text-gray-700 mb-2">Join Existing Group</h2>
-                    <div>
-                        <label for="join-code-input" class="block text-sm font-medium text-gray-700 mb-1">Enter 6-Character Join Code</label>
-                        <input type="text" id="join-code-input" maxlength="6" placeholder="ABC123" required class="w-full p-3 text-center text-xl tracking-wider uppercase border border-gray-300 rounded-lg focus:ring-pink-500 focus:border-pink-500">
-                    </div>
-                    <button type="button" id="join-by-code-btn" class="w-full text-white font-semibold py-3 rounded-xl bg-pink-500 hover:bg-pink-600 transition">Join Group</button>
-                </div>
-
-                <div id="view-session" class="hidden space-y-4 pt-4 border-t border-gray-200">
-                    <h2 class="text-xl font-semibold text-gray-700 mb-2">Active Session <span id="session-occasion"></span></h2>
-
-                    <div id="join-code-box" class="mt-2 p-4 bg-indigo-50 border-2 border-indigo-300 rounded-xl text-center">
-                        <p class="text-sm font-medium text-indigo-700 mb-2">Share this Join Code</p>
-                        <div class="flex justify-center items-center space-x-3">
-                            <span id="session-join-code" class="join-code-display font-extrabold text-indigo-900 select-all"></span>
-                            <button type="button" id="copy-code-btn" class="flex-shrink-0 px-3 py-1 bg-indigo-500 text-white text-sm font-medium rounded-lg hover:bg-indigo-600 transition duration-150 ease-in-out">Copy</button>
-                        </div>
-                    </div>
-
-                    <h3 class="text-lg font-semibold text-gray-700 mt-6">Participants <span id="participant-count">0</span></h3>
-                    <div id="participants-list" class="space-y-2 p-3 bg-white rounded-lg border border-gray-200">
-                        <p class="text-gray-500 italic">Waiting for participants to join...</p>
-                    </div>
-
-                    <div class="flex flex-col space-y-3 mt-6">
-                        <button type="button" id="calculate-btn" class="submit-button w-full text-white font-semibold py-3 rounded-xl flex items-center justify-center focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 disabled:opacity-50" disabled>
-                            <span id="button-text">Find Optimal Center & Real-World Landmarks</span>
-                            <div id="loading-indicator" class="loading-spinner hidden ml-3"></div>
-                        </button>
-                        <button type="button" id="end-session-btn" class="w-full text-sm font-semibold py-3 rounded-xl flex items-center justify-center bg-gray-200 text-gray-700 hover:bg-gray-300 transition duration-150 ease-in-out">End Session & Create New Group</button>
-                    </div>
-                </div>
-
-                <div id="results-section" class="mt-8 pt-6 border-t border-gray-200 hidden">
-                    <h2 class="text-2xl font-semibold text-gray-700 mb-4">Top Recommendations</h2>
-                    
-                    <div id="map-container" class="mb-6"></div>
-
-                    <div id="recommendations-list" class="space-y-6"></div>
-                    <div id="sources-container" class="mt-6 text-xs text-gray-500 border-t pt-4">
-                        <p class="font-medium mb-2">Data Source: **Latlong.ai API Hub** (Geocoding, Distance Matrix, Landmark APIs)</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-        import { getFirestore, doc, getDoc, setDoc, addDoc, collection, onSnapshot, updateDoc, arrayUnion, query, where, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-
-        // =========================================================================
-        // ⚠️ LATLONG.AI CONFIGURATION
-        // =========================================================================
-
-        // 1. Latlong.ai API Key/Token: (Provided by the user)
-        const LATLONG_API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJUb2tlbklEIjoiMzNmMjY3MTgtMjRiOC00NTFlLWJlMGYtOGZmMzA1ZDI3ZDk5IiwiQ2xpZW50SUQiOiI2YTA3ZDNkMC01MTNkLTRjMTMtYjRjMi04NTdiY2YzNDJiNWIiLCJCdW5pdElEIjozMCwiQXBwTmFtZSI6InBlcyBoYWNrYXRob24gbWFwcy1yZWltYWdpbmVkIiwiQXBwSUQiOjE4Mzk1LCJUaW1lU3RhbXAiOiIyMDI1LTExLTI4IDE3OjEyOjUyIiwiZXhwIjoxNzY0NTIyNzcyfQ.q5AqBLmiB3KlPMt58O5N767uBJ6qNxGmt6X2aYWtrbI"; 
-        
-        // Base URLs for Latlong.ai APIs
-        const LATLONG_BASE_URL = "https://apihub.latlong.ai/v4";
-        const GEOCODE_URL = `${LATLONG_BASE_URL}/geocode.json`;
-        const DISTANCE_MATRIX_URL = `${LATLONG_BASE_URL}/distance_matrix.json`;
-        const LANDMARK_URL = `${LATLONG_BASE_URL}/landmarks.json`;
-
-        // 2. Firebase Configuration (Retained for group/profile state management)
-        const YOUR_FALLBACK_CONFIG = {
-            apiKey: "AIzaSyBr2D6zEFX3u1wQTXE8aTgHFw5EeIUnsPE",
-            authDomain: "html-9bee0.firebaseapp.com",
-            projectId: "html-9bee0",
-            storageBucket: "html-9bee0.firebasestorage.app",
-            messagingSenderId: "893745664576",
-            appId: "1893745664576web1e74ae24e1c9e9bba685a6",
-            measurementId: "G-9DYC404SP0"
-        };
-        const firebaseConfig = YOUR_FALLBACK_CONFIG;
-        const APP_ID = 'meetup-party-planner-latlong';
-        // =========================================================================
-        // END CONFIGURATION
-        // =========================================================================
-
-
-        // GLOBAL STATE & DOM REFERENCES
-        let db, auth, userId = 'anonymous', isAuthReady = false, userProfile = null;
-        let currentGroupId = null, groupUnsubscribe = null;
-        let map = null; // Variable to hold the Leaflet map instance
-
-        const VIEWS = { loading: document.getElementById('initial-loading'), profile: document.getElementById('view-profile'), main: document.getElementById('view-main'), create: document.getElementById('view-create'), join: document.getElementById('view-join'), session: document.getElementById('view-session') };
-        const PROFILE_FORM = document.getElementById('profile-form');
-        const HOME_LOCALITY_INPUT = document.getElementById('home-locality');
-        const PROFILE_NAME_INPUT = document.getElementById('profile-name');
-        const SAVE_PROFILE_BTN = document.getElementById('save-profile-btn');
-        const PROFILE_BUTTON_TEXT = document.getElementById('profile-button-text');
-        const PROFILE_LOADING_INDICATOR = document.getElementById('profile-loading-indicator');
-        const USER_DISPLAY_NAME = document.getElementById('user-display-name');
-        const OCCASION_CREATE = document.getElementById('occasion-create');
-        const CREATE_GROUP_BTN = document.getElementById('create-group-btn');
-        const JOIN_BY_CODE_BTN = document.getElementById('join-by-code-btn');
-        const JOIN_CODE_INPUT = document.getElementById('join-code-input');
-        const CALCULATE_BTN = document.getElementById('calculate-btn');
-        const SESSION_JOIN_CODE = document.getElementById('session-join-code');
-        const COPY_CODE_BTN = document.getElementById('copy-code-btn');
-        const PARTICIPANTS_LIST = document.getElementById('participants-list');
-        const PARTICIPANT_COUNT = document.getElementById('participant-count');
-        const SESSION_OCCASION = document.getElementById('session-occasion');
-        const END_SESSION_BTN = document.getElementById('end-session-btn');
-        const GO_TO_PROFILE_BTN = document.getElementById('go-to-profile');
-        const RESULTS_SECTION = document.getElementById('results-section');
-        const RECOMMENDATIONS_LIST = document.getElementById('recommendations-list');
-        const STATUS_MESSAGE = document.getElementById('status-message');
-        const BUTTON_TEXT = document.getElementById('button-text');
-        const LOADING_INDICATOR = document.getElementById('loading-indicator');
-        const SHOW_CREATE_BTN = document.getElementById('show-create-btn');
-        const SHOW_JOIN_BTN = document.getElementById('show-join-btn');
-
-
-        // FIXED PATHS
-        const PROFILE_COLLECTION_PATH = `artifacts/${APP_ID}/users`;
-        const GROUP_COLLECTION_PATH = `artifacts/${APP_ID}/groups`;
-
-        // =========================================================================
-        // UTILITY FUNCTIONS
-        // =========================================================================
-
-        function showStatus(message, isError = false) {
-            STATUS_MESSAGE.textContent = message;
-            STATUS_MESSAGE.className = `mt-4 p-3 rounded-lg ${isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
-            STATUS_MESSAGE.classList.remove('hidden');
-            // Keep error messages visible longer
-            const timeout = isError ? 10000 : 5000;
-            setTimeout(() => STATUS_MESSAGE.classList.add('hidden'), timeout);
-        }
-
-        function setView(mainView, subView = null) {
-            Object.values(VIEWS).forEach(v => v.classList.add('hidden'));
-            if (VIEWS[mainView]) VIEWS[mainView].classList.remove('hidden');
-            
-            if (mainView === 'main') {
-                document.getElementById('view-create').classList.add('hidden');
-                document.getElementById('view-join').classList.add('hidden');
-                document.getElementById('view-session').classList.add('hidden');
-                if (VIEWS[subView]) VIEWS[subView].classList.remove('hidden');
-                updateTabButtons(subView === 'join');
-            }
-        }
-        
-        function updateTabButtons(isJoinView) {
-            if (isJoinView) {
-                SHOW_CREATE_BTN.className = 'flex-1 py-2 font-medium rounded-lg transition-colors border-b-2 border-gray-300 text-gray-700 hover:bg-gray-100';
-                SHOW_JOIN_BTN.className = 'flex-1 py-2 font-medium rounded-lg transition-colors border-b-4 border-pink-500 text-pink-700 bg-pink-100 shadow-md';
-            } else {
-                SHOW_CREATE_BTN.className = 'flex-1 py-2 font-medium rounded-lg transition-colors border-b-4 border-indigo-500 text-indigo-700 bg-indigo-100 shadow-md';
-                SHOW_JOIN_BTN.className = 'flex-1 py-2 font-medium rounded-lg transition-colors border-b-2 border-gray-300 text-gray-700 hover:bg-gray-100';
-            }
-        }
-
-        function formatDistance(meters, isRouted = true) {
-            const suffix = isRouted ? '' : ' (Straight Line)';
-            if (meters === Infinity) return 'N/A';
-            if (meters < 1000) return `${Math.round(meters)} m${suffix}`;
-            return `${(meters / 1000).toFixed(1)} km${suffix}`;
-        }
-
-        function formatTime(seconds) {
-            if (seconds === Infinity) return 'N/A';
-            const minutes = Math.floor(seconds / 60);
-            const hours = Math.floor(minutes / 60);
-            const remainingMinutes = minutes % 60;
-
-            let result = '';
-            if (hours > 0) result += `${hours} hr `;
-            if (remainingMinutes > 0 || hours === 0) result += `${remainingMinutes} min`;
-            return result.trim();
-        }
-
-        function generateGroupCode() {
-            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let code = '';
-            for (let i = 0; i < 6; i++) {
-                code += characters.charAt(Math.floor(Math.random() * characters.length));
-            }
-            return code;
-        }
-
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                showStatus('Code copied to clipboard!', false);
-            }).catch(err => {
-                console.error('Could not copy text: ', err);
-                showStatus('Failed to copy code.', true);
-            });
-        }
-        
-        function setButtonLoading(isLoading, buttonRef = CALCULATE_BTN) {
-            if (buttonRef === CALCULATE_BTN) {
-                CALCULATE_BTN.disabled = isLoading || (parseInt(PARTICIPANT_COUNT.textContent) < 2);
-                BUTTON_TEXT.textContent = isLoading ? 'Calculating...' : 'Find Optimal Center & Real-World Landmarks';
-                LOADING_INDICATOR.classList.toggle('hidden', !isLoading);
-            } else if (buttonRef === SAVE_PROFILE_BTN) {
-                SAVE_PROFILE_BTN.disabled = isLoading;
-                PROFILE_BUTTON_TEXT.textContent = isLoading ? 'Saving...' : 'Save Profile & Continue';
-                PROFILE_LOADING_INDICATOR.classList.toggle('hidden', !isLoading);
-            } else if (buttonRef === CREATE_GROUP_BTN) {
-                CREATE_GROUP_BTN.disabled = isLoading;
-                CREATE_GROUP_BTN.textContent = isLoading ? 'Creating...' : 'Create Group & Get Code';
-            } else if (buttonRef === JOIN_BY_CODE_BTN) {
-                JOIN_BY_CODE_BTN.disabled = isLoading;
-                JOIN_BY_CODE_BTN.textContent = isLoading ? 'Joining...' : 'Join Group';
-            }
-        }
-        
-        // --- Map Visualization Functions ---
-
-        function initMap(centerLat, centerLon) {
-            // Check if L (Leaflet) is defined before calling its functions
-            if (typeof L === 'undefined') {
-                console.error("Leaflet library (L) is not defined.");
-                return;
-            }
-            if (map) {
-                map.remove();
-            }
-            map = L.map('map-container').setView([centerLat, centerLon], 10);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            }).addTo(map);
-        }
-
-        function addMarker(lat, lon, popupText, iconType = 'default') {
-            if (typeof L === 'undefined') return;
-
-            // Using different color classes for better map visualization
-            let markerColor = iconType === 'center' ? 'red' : (iconType === 'landmark' ? 'blue' : 'green');
-            
-            // Custom Icon for better visual
-            let iconHtml = '📍';
-            if (iconType === 'center') iconHtml = '⭐';
-            else if (iconType === 'origin') iconHtml = '🏠';
-
-            // CORRECTED: Ensure L.DivIcon is used correctly with the class defined in CSS
-            let markerIcon = L.divIcon({
-                className: `custom-div-icon bg-${markerColor}-600 rounded-full w-6 h-6 text-white text-base text-center shadow-xl font-bold`,
-                html: iconHtml,
-                iconSize: [24, 24], // Set size
-                iconAnchor: [12, 24] // Set anchor to the bottom center (for pointer effect)
-            });
-
-            const marker = L.marker([lat, lon], {icon: markerIcon}).addTo(map);
-            marker.bindPopup(popupText, { closeButton: false, autoClose: false }).openPopup(); 
-            return marker;
-        }
-
-
-        // =========================================================================
-        // LATLONG.AI API FUNCTIONS
-        // =========================================================================
-
-        async function geocodeAddress(address) {
-            // FIX APPLIED: Uses 'address' exactly as provided by user (Pin Code + City)
-            const addressWithContext = address; 
-            const endpoint = `${GEOCODE_URL}?address=${encodeURIComponent(addressWithContext)}`;
-            
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'GET',
-                    headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
-                });
-                
-                if (!response.ok) {
-                    const errorBody = await response.text();
-                    console.error(`Latlong Geocoding HTTP Error ${response.status}:`, errorBody);
-                    throw new Error(`API Geocoding failed: HTTP ${response.status}. Check API token or network.`);
-                }
-                
-                const data = await response.json();
-
-                if (data.status === 'success' && data.data && data.data.latitude) {
-                    return { lat: parseFloat(data.data.latitude), lon: parseFloat(data.data.longitude) };
-                }
-                
-                const errorMessage = data.message || data.status || 'Unknown Geocoding error';
-                console.error(`Latlong Geocoding failed for ${address}:`, errorMessage, data);
-                throw new Error(data.message || 'Could not find coordinates for the provided address.');
-            } catch (error) {
-                console.error('Network or parsing error during Geocoding:', error);
-                if (error.message.startsWith('API Geocoding failed')) throw error;
-                throw new Error(`Network error during geocoding: ${error.message}`);
-            }
-        }
-
-        async function getDistanceMatrix(origins, destinations, profile = 'driving') {
-            const endpoint = `${DISTANCE_MATRIX_URL}?origins=${origins}&destinations=${destinations}&profile=${profile}`;
-            
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'GET',
-                    headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
-                });
-
-                if (!response.ok) {
-                    console.error(`Latlong Distance Matrix HTTP Error ${response.status}`);
-                    return { distance: Infinity, duration: Infinity, status: `HTTP_ERROR_${response.status}` };
-                }
-
-                const data = await response.json();
-
-                if (data.status === 'success' && data.data && data.data.rows && data.data.rows[0].elements[0].status === 'OK') {
-                    const element = data.data.rows[0].elements[0];
-                    return { 
-                        distance: element.distance.value, // meters (Routed Distance)
-                        duration: element.duration.value, // seconds
-                        status: 'OK'
-                    };
-                }
-                
-                const status = data.data?.rows[0]?.elements[0]?.status || data.message || 'ERROR';
-                const errorStatus = (status === 'ZERO_RESULTS' || status === 'NOT_FOUND') ? 'ROUTE_NOT_FOUND' : status;
-                
-                console.warn(`Latlong Distance Matrix failed: Status: ${status}. Falling back to Haversine.`, data);
-                return { distance: Infinity, duration: Infinity, status: errorStatus }; 
-
-            } catch (error) {
-                console.error('Network or parsing error during Distance Matrix:', error);
-                return { distance: Infinity, duration: Infinity, status: 'NETWORK_ERROR' }; 
-            }
-        }
-
-        async function getLandmarks(lat, lon, radius) {
-            // Using dynamic radius in meters
-            const endpoint = `${LANDMARK_URL}?latitude=${lat}&longitude=${lon}&radius=${radius}`; 
-            
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'GET',
-                    headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
-                });
-
-                if (!response.ok) {
-                    console.error(`Latlong Landmark HTTP Error ${response.status}`);
-                    return [];
-                }
-                
-                const data = await response.json();
-
-                if (data.status === 'success' && Array.isArray(data.data)) {
-                    return data.data.map(landmark => ({
-                        name: landmark.name,
-                        lat: parseFloat(landmark.latitude),
-                        lon: parseFloat(landmark.longitude)
-                    }));
-                }
-                
-                console.warn('Latlong Landmark API failed or returned no results:', data.message || data.status);
-                return [];
-            } catch (error) {
-                console.error('Network or parsing error during Landmark search:', error);
-                return [];
-            }
-        }
-        
-        // --- Haversine and Center Calculation Utilities ---
-
-        function haversineDistance(lat1, lon1, lat2, lon2) {
-            // Implements Haversine distance in meters
-            const R = 6371e3; // Earth radius in metres
-            const φ1 = lat1 * Math.PI/180;
-            const φ2 = lat2 * Math.PI/180;
-            const Δφ = (lat2-lat1) * Math.PI/180;
-            const Δλ = (lon2-lon1) * Math.PI/180;
-
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                      Math.cos(φ1) * Math.cos(φ2) *
-                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-            return R * c; // in metres
-        }
-
-        function calculateGeometricCenter(participants) {
-            let sumLat = 0, sumLon = 0;
-            if (participants.length === 0) return null;
-
-            participants.forEach(p => {
-                sumLat += p.lat;
-                sumLon += p.lon;
-            });
-
-            return {
-                lat: sumLat / participants.length,
-                lon: sumLon / participants.length
-            };
-        }
-
-        function calculateMaxSpread(participants) {
-            let maxDistance = 0;
-            if (participants.length < 2) return 0;
-
-            for (let i = 0; i < participants.length; i++) {
-                for (let j = i + 1; j < participants.length; j++) {
-                    const dist = haversineDistance(
-                        participants[i].lat, participants[i].lon,
-                        participants[j].lat, participants[j].lon
-                    );
-                    if (dist > maxDistance) {
-                        maxDistance = dist;
-                    }
-                }
-            }
-            return maxDistance;
-        }
-
-
-        // =========================================================================
-        // CORE CALCULATION LOGIC
-        // =========================================================================
-
-        async function findOptimalMeetupLocation() {
-            setButtonLoading(true);
-            RESULTS_SECTION.classList.add('hidden');
-            RECOMMENDATIONS_LIST.innerHTML = '';
-            showStatus('Step 1/4: Locating participants and calculating geometric center...', false);
-
-            try {
-                const groupDocRef = doc(db, GROUP_COLLECTION_PATH, currentGroupId);
-                const groupSnapshot = await getDoc(groupDocRef);
-                if (!groupSnapshot.exists()) {
-                    throw new Error('Group session not found or deleted.');
-                }
-                const groupData = groupSnapshot.data();
-                const participants = groupData.participants || [];
-
-                // 1. Validate participant coordinates
-                const validParticipants = participants.filter(p => p.lat && p.lon);
-                if (validParticipants.length < 2) {
-                    throw new Error('Need at least 2 participants with valid addresses to calculate the center. Please ensure all participants have saved a valid Pin Code and City.');
-                }
-                
-                const center = calculateGeometricCenter(validParticipants);
-                let potentialLocations = [];
-                let landmarkData = [];
-                
-                // Always include the theoretical center as a primary candidate
-                potentialLocations.push({ 
-                    name: `Theoretical Geometric Center`, 
-                    lat: center.lat, 
-                    lon: center.lon,
-                    isCentroid: true
-                });
-
-
-                // 2. Landmark Search Strategy
-                const maxSpread = calculateMaxSpread(validParticipants);
-                const dynamicRadius = Math.max(5000, Math.min(Math.floor(maxSpread / 2), 15000));
-                const broadRadius = 15000; // Fixed 15 km fallback search radius
-
-                showStatus(`Step 2/4: Searching for landmarks within dynamic radius of ${formatDistance(dynamicRadius, false)}...`, false);
-                
-                // Attempt 1: Dynamic Radius Search
-                landmarkData = await getLandmarks(center.lat, center.lon, dynamicRadius);
-                
-                if (landmarkData.length === 0) {
-                    showStatus(`Step 2/4: Dynamic search failed. Retrying with a broader radius of ${formatDistance(broadRadius, false)}...`, false);
-                    
-                    // Attempt 2: Broad Fixed Radius Search
-                    landmarkData = await getLandmarks(center.lat, center.lon, broadRadius);
-                }
-                
-                if (landmarkData.length > 0) {
-                    potentialLocations.push(...landmarkData);
-                    showStatus(`Step 3/4: Found ${landmarkData.length} landmarks. Calculating routes...`, false);
-                } else {
-                    showStatus('Step 3/4: Could not find specific nearby landmarks, even with a broader search. Calculating travel distance only to the theoretical center.', false);
-                }
-
-                // 4. Calculate Distance Matrix for all potential locations
-                
-                const results = [];
-                showStatus(`Step 4/4: Calculating ${validParticipants.length * potentialLocations.length} possible routes via Latlong.ai Distance Matrix...`, false);
-
-
-                for (let i = 0; i < potentialLocations.length; i++) {
-                    const location = potentialLocations[i];
-                    const destinationCoordinate = `${location.lat},${location.lon}`;
-                    
-                    let locationTotalDistance = 0;
-                    let locationMaxDuration = 0;
-                    let allRouted = true;
-                    const travelDetails = [];
-                    
-                    for (let j = 0; j < validParticipants.length; j++) {
-                        const p = validParticipants[j];
-                        const singleOrigin = `${p.lat},${p.lon}`;
-
-                        const singleResult = await getDistanceMatrix(singleOrigin, destinationCoordinate, 'driving');
-                        
-                        let finalDistance = singleResult.distance;
-                        let finalDuration = singleResult.duration;
-                        let isRouted = (singleResult.status === 'OK');
-
-                        // FALLBACK LOGIC: If Distance Matrix fails, use Haversine distance.
-                        if (!isRouted) {
-                            finalDistance = haversineDistance(p.lat, p.lon, location.lat, location.lon);
-                            finalDuration = Infinity; 
-                            allRouted = false;
-                        }
-                        
-                        locationTotalDistance += finalDistance;
-                        // Max duration only tracks valid routed times.
-                        if (finalDuration !== Infinity) {
-                            locationMaxDuration = Math.max(locationMaxDuration, finalDuration);
-                        }
-
-                        travelDetails.push({
-                            displayName: p.displayName,
-                            distance: finalDistance,
-                            duration: finalDuration,
-                            isRouted: isRouted
-                        });
-                    }
-
-                    results.push({
-                        rank: 0, 
-                        placeName: location.name,
-                        lat: location.lat,
-                        lon: location.lon,
-                        totalDistance: locationTotalDistance, // Key metric for ranking
-                        maxDuration: locationMaxDuration,
-                        travelDetails: travelDetails,
-                        isCentroid: location.isCentroid || false,
-                        allRouted: allRouted // True if ALL participants got a routed distance
-                    });
-                }
-
-                // 5. Sort and Display Results
-                // ... (End of step 4 loop, where all results are in the 'results' array)
-
-                // 5. Advanced Ranking, Isochrone Filtering, and Display
-
-                // Sort results primarily by distance to find the BEST theoretical travel hub
-                const bestDistanceResult = results.sort((a, b) => a.totalDistance - b.totalDistance)[0];
-
-                let bestTravelTime = bestDistanceResult.maxDuration; // Use the max travel time (duration) from the best distance location
-                if (bestTravelTime === 0 || bestTravelTime === Infinity) {
-                    // Fallback time limit (e.g., 30 minutes) if routed times are unavailable
-                    bestTravelTime = 1800; 
-                }
-
-                showStatus(`Step 5/5: Finding accessible area (Isochrone) for max travel time of ${formatTime(bestTravelTime)}...`, false);
-
-                // A. Get the Isochrone Polygon for the theoretical center
-                const centerLocation = potentialLocations.find(loc => loc.isCentroid);
-                let isochroneGeoJSON = null;
-
-                if (centerLocation) {
-                    isochroneGeoJSON = await getIsochronePolygon(centerLocation.lat, centerLocation.lon, bestTravelTime);
-                }
-
-                // B. Final Sort, Rank, and Filter
-                const finalRankedResults = results
-                    .filter(location => !location.isCentroid) // Don't rank the mathematical center itself
-                    .sort((a, b) => {
-                        // Primary sort: Prioritize fully routed results
-                        if (a.allRouted !== b.allRouted) {
-                            return a.allRouted ? -1 : 1; 
-                        }
-                        // Secondary sort: Then by total distance
-                        return a.totalDistance - b.totalDistance;
-                    })
-                    .slice(0, 5) // Show top 5 real-world suggestions
-
-                // Add the center back at Rank 0, but only for informational purposes
-                if (centerLocation) {
-                    finalRankedResults.unshift(results.find(loc => loc.isCentroid));
-                }
-
-                // C. Display results and the isochrone boundary
-                displayResults(finalRankedResults, validParticipants, isochroneGeoJSON);
-
                 showStatus('Calculation complete! Results displayed.', false);
-// ... (rest of finally block)
-
+            } catch (error) {
+                console.error("Calculation failed:", error);
+                showStatus(`Calculation failed: ${error.message}`, true);
+            } finally {
+                setButtonLoading(false);
+            }
+        }
         
         // --- Display Functions ---
 
-                // Change function signature
-        function displayResults(results, validParticipants, isochroneGeoJSON) {
-            // ... (existing code for map and markers)
+        function displayResults(results, validParticipants) {
+            RECOMMENDATIONS_LIST.innerHTML = '';
+            
+            if (results.length === 0) {
+                RECOMMENDATIONS_LIST.innerHTML = '<p class="text-gray-500 italic">No valid meetup locations could be calculated. Please check your addresses or API quota.</p>';
+                RESULTS_SECTION.classList.remove('hidden');
+                return;
+            }
             
             // Check if L (Leaflet) is defined before trying to initialize the map
-            // ... (existing L check)
+            if (typeof L === 'undefined') {
+                RECOMMENDATIONS_LIST.innerHTML = '<p class="text-red-500 font-bold">Error: Map library (Leaflet) failed to load. Cannot display map or markers.</p>';
+                RESULTS_SECTION.classList.remove('hidden');
+                return;
+            }
 
             // Initialize Map
-            // ... (existing map init)
+            const initialCenter = results[0];
+            initMap(initialCenter.lat, initialCenter.lon);
 
-            // Track map bounds
+            // Track map bounds (Include all locations and participants for accurate zoom)
             const bounds = L.latLngBounds([]);
 
             // 1. Add participant markers and update bounds
-            // ... (existing participant markers)
+            validParticipants.forEach(p => {
+                addMarker(p.lat, p.lon, `**${p.displayName}** (Origin: ${p.homeLocality})`, 'origin');
+                bounds.extend([p.lat, p.lon]);
+            });
             
-            // 2. Add Location Marker and update bounds
             results.forEach((location, index) => {
                 location.rank = index + 1;
                 
-                // Use index 0 for Centroid, index 1 for BEST real spot, etc.
-                const effectiveRank = location.isCentroid ? 0 : index; 
-                
+                // 2. Add Location Marker and update bounds
                 const markerType = location.isCentroid ? 'center' : 'landmark';
-                addMarker(location.lat, location.lon, `**#${effectiveRank} ${location.placeName}**<br>Total Distance: ${formatDistance(location.totalDistance, location.allRouted)}`, markerType);
+                addMarker(location.lat, location.lon, `**#${index + 1} ${location.placeName}**<br>Total Distance: ${formatDistance(location.totalDistance, location.allRouted)}`, markerType);
                 bounds.extend([location.lat, location.lon]);
+
+
+                let detailsHtml = location.travelDetails.map(d => `
+                    <tr>
+                        <td class="px-2 py-1 text-sm text-gray-700 font-medium">${d.displayName}</td>
+                        <td class="px-2 py-1 text-sm ${d.isRouted ? 'text-gray-600' : 'text-red-600 font-semibold'}">${formatDistance(d.distance, d.isRouted)}</td>
+                        <td class="px-2 py-1 text-sm ${d.isRouted ? 'text-gray-600' : 'text-red-600 font-semibold'}">${d.isRouted ? formatTime(d.duration) : 'No Route Found'}</td>
+                    </tr>
+                `).join('');
                 
-                // ... (rest of HTML card generation)
+                const centroidNote = location.isCentroid ? '<p class="text-sm italic text-indigo-600 mb-2">This is the **Mathematical Center**. Landmark suggestions follow.</p>' : '';
+                const routingWarning = location.allRouted ? '' : '<p class="text-xs font-semibold text-red-600 mt-2">⚠️ Note: Some distances are straight-line (Haversine) as a precise driving route could not be found for all origins. This location is still ranked highly based on its geometric distance.</p>';
+
+                const cardHtml = `
+                    <div class="p-5 border-2 rounded-xl transition-shadow ${index === 0 ? 'bg-green-50 border-green-300 shadow-lg' : 'bg-white border-gray-200 shadow-md hover:shadow-lg'}">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-xl font-bold ${index === 0 ? 'text-green-700' : 'text-indigo-700'}">
+                                ${index + 1}. ${location.placeName}
+                                ${index === 0 ? '<span class="isochrone-badge bg-green-500">BEST ACCESS</span>' : ''}
+                            </h3>
+                        </div>
+                        ${centroidNote}
+                        <p class="text-gray-600 mb-2 text-sm italic">Lat: ${location.lat.toFixed(5)}, Lon: ${location.lon.toFixed(5)}</p>
+                        <p class="text-gray-600 mb-4 text-sm font-medium">Worst-case travel time (Routed): **${location.maxDuration !== 0 ? formatTime(location.maxDuration) : 'N/A (No Valid Routed Times)'}**.</p>
+                    
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full travel-table rounded-lg">
+                                <thead>
+                                    <tr>
+                                        <th class="rounded-tl-lg">Participant</th>
+                                        <th>Distance</th>
+                                        <th class="rounded-tr-lg">Time (Driving)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${detailsHtml}
+                                </tbody>
+                            </table>
+                            ${routingWarning}
+                        </div>
+                    </div>
+                `;
+                RECOMMENDATIONS_LIST.innerHTML += cardHtml;
             });
             
-            // --- NEW ISOCHRONE VISUALIZATION ---
-            if (isochroneGeoJSON && map) {
-                const isochroneLayer = L.geoJSON(isochroneGeoJSON, {
-                    style: {
-                        color: '#6A5ACD', // Slate Blue
-                        weight: 2,
-                        opacity: 0.5,
-                        fillColor: '#6A5ACD',
-                        fillOpacity: 0.1
-                    }
-                }).addTo(map);
-                bounds.extend(isochroneLayer.getBounds()); // Include the polygon in bounds calculation
-                
-                document.getElementById('sources-container').innerHTML += `
-                    <p class="text-xs text-gray-500 mt-1">Isochrone area shows locations reachable from the center within ${formatTime(bestTravelTime)}.
-                `;
-                
-                // 
-            }
-            // ------------------------------------
-
             // 3. Fit Map to Bounds
-            // ... (existing map fitBounds logic)
+            if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [50, 50] });
+            } else {
+                 // Fallback if only one or no points are valid
+                map.setView([initialCenter.lat, initialCenter.lon], 10);
+            }
 
             RESULTS_SECTION.classList.remove('hidden');
+            // Force map redraw after section becomes visible
             setTimeout(() => map.invalidateSize(), 300); 
+            document.getElementById('sources-container').innerHTML = `
+                <p class="font-medium mb-2">Data Source: **Latlong.ai API Hub** (Geocoding, Distance Matrix, Landmark APIs)</p>
+            `;
         }
-
 
         // =========================================================================
         // FIREBASE/AUTH/GROUP LISTENERS (State Management) - Omitted for brevity (unchanged)
