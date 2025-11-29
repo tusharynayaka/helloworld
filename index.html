@@ -198,7 +198,7 @@
         // =========================================================================
 
         // 1. Latlong.ai API Key/Token: (Provided by the user)
-        const LATLONG_API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJUb2tlbklEIjoiMzNmMjY3MTgtMjRiOC00NTFlLWJlMGYtOGZmMzA1ZDI3ZDk5IiwiQ2xpZW50SUQiOiI2YTA3ZDNkMC01MTNkLTRjMTMtYjRjMi04NTdiY2YzNDJiNWIiLCJCdW5pdElEIjozMCwiQXBwTmFtZSI6InBlcyBoYWNrYXRob24gbWFwcy1yZWltYWdpbmVkIiwiQXBwSUQiOjE4Mzk1LCJUaW1lU3RhbXAiOiIyMDI1LTExLTI4IDE3OjEyOjUyIiwiZXhwIjoxNzY0NTIyNzcyfQ.q5AqBLmiB3KlPMt58O5N767uBJ6qNxGmt6X2aYWtrbI"; 
+        const LATLONG_API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJUb2tlbklEIjoiMzNmMjY3MTgtMjRiOC00NTFlLWJlMGYtOGZmMzA1ZDI3ZDk5IiwiQ2xpZW50SUQiOiI2YTA3ZDNkMC01MTNkLTRjMTMtYjRjMi04NTdiY2YzNDJiNWIiLCJCdW5pdElEIjozMCwiQXBwTmFtZSI6InBlcyBoYWNrYXRob24gbWFwcy1yZWltYWdpbmVkIiwiQXBwSUQiOjE4Mzk1LCJUaW1lU3RhbXAiOiIyMDI1LTExLTI4IDE3OjEyOjUyIiwiZXhwIjoxNzY0NTIyNzcyfQ.q5AqBLmiB3KlPMd58O5N767uBJ6qNxGmt6X2aYWtrbI"; 
         
         // Base URLs for Latlong.ai APIs
         const LATLONG_BASE_URL = "https://apihub.latlong.ai/v4";
@@ -388,9 +388,8 @@
         // =========================================================================
 
         async function geocodeAddress(address) {
-            // FIX APPLIED: Reverted to use 'address' exactly as provided by user (Pin Code + City)
+            // FIX APPLIED: Uses 'address' exactly as provided by user (Pin Code + City)
             const addressWithContext = address; 
-
             const endpoint = `${GEOCODE_URL}?address=${encodeURIComponent(addressWithContext)}`;
             
             try {
@@ -398,6 +397,15 @@
                     method: 'GET',
                     headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
                 });
+                
+                // Check for HTTP errors first (e.g., 401 Unauthorized, 400 Bad Request)
+                if (!response.ok) {
+                    const errorBody = await response.text();
+                    console.error(`Latlong Geocoding HTTP Error ${response.status}:`, errorBody);
+                    // Throw specific error for profile saving function to catch
+                    throw new Error(`API Geocoding failed: HTTP ${response.status}. Check API token or network.`);
+                }
+                
                 const data = await response.json();
 
                 if (data.status === 'success' && data.data && data.data.latitude) {
@@ -406,11 +414,13 @@
                 
                 const errorMessage = data.message || data.status || 'Unknown Geocoding error';
                 console.error(`Latlong Geocoding failed for ${address}:`, errorMessage, data);
-                // Return null on failure as an explicit indicator
-                return null;
+                // Throw specific error for the profile saving function
+                throw new Error(data.message || 'Could not find coordinates for the provided address.');
             } catch (error) {
                 console.error('Network or parsing error during Geocoding:', error);
-                return null;
+                // Re-throw if it was a custom error, or throw a generic one
+                if (error.message.startsWith('API Geocoding failed')) throw error;
+                throw new Error(`Network error during geocoding: ${error.message}`);
             }
         }
 
@@ -422,6 +432,12 @@
                     method: 'GET',
                     headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
                 });
+
+                if (!response.ok) {
+                    console.error(`Latlong Distance Matrix HTTP Error ${response.status}`);
+                    return { distance: Infinity, duration: Infinity, status: `HTTP_ERROR_${response.status}` };
+                }
+
                 const data = await response.json();
 
                 if (data.status === 'success' && data.data && data.data.rows && data.data.rows[0].elements[0].status === 'OK') {
@@ -443,15 +459,21 @@
             }
         }
 
-        async function getLandmarks(lat, lon) {
-            // Using radius of 10000 meters (10km) as a default search area
-            const endpoint = `${LANDMARK_URL}?latitude=${lat}&longitude=${lon}&radius=10000`; 
+        async function getLandmarks(lat, lon, radius) {
+            // Updated to use dynamic radius in meters
+            const endpoint = `${LANDMARK_URL}?latitude=${lat}&longitude=${lon}&radius=${radius}`; 
             
             try {
                 const response = await fetch(endpoint, {
                     method: 'GET',
                     headers: { 'X-Authorization-Token': LATLONG_API_TOKEN }
                 });
+
+                if (!response.ok) {
+                    console.error(`Latlong Landmark HTTP Error ${response.status}`);
+                    return [];
+                }
+                
                 const data = await response.json();
 
                 if (data.status === 'success' && Array.isArray(data.data)) {
@@ -486,6 +508,42 @@
             };
         }
 
+        // Haversine formula to calculate the distance between two points on the surface of a sphere (Earth).
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // metres
+            const φ1 = lat1 * Math.PI/180; // φ, λ in radians
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            const d = R * c; // in metres
+            return d;
+        }
+
+        // Calculates the maximum distance (in meters) between any two participants
+        function calculateMaxSpread(participants) {
+            let maxDistance = 0;
+            if (participants.length < 2) return 0;
+
+            for (let i = 0; i < participants.length; i++) {
+                for (let j = i + 1; j < participants.length; j++) {
+                    const dist = haversineDistance(
+                        participants[i].lat, participants[i].lon,
+                        participants[j].lat, participants[j].lon
+                    );
+                    if (dist > maxDistance) {
+                        maxDistance = dist;
+                    }
+                }
+            }
+            return maxDistance;
+        }
+
 
         // =========================================================================
         // CORE CALCULATION LOGIC
@@ -497,108 +555,116 @@
             RECOMMENDATIONS_LIST.innerHTML = '';
             showStatus('Step 1/3: Locating participants and calculating geometric center...', false);
 
-            const groupDocRef = doc(db, GROUP_COLLECTION_PATH, currentGroupId);
-            const groupSnapshot = await getDoc(groupDocRef);
-            if (!groupSnapshot.exists()) {
-                showStatus('Error: Group session not found.', true);
-                setButtonLoading(false);
-                return;
-            }
-            const groupData = groupSnapshot.data();
-            const participants = groupData.participants || [];
+            try {
+                const groupDocRef = doc(db, GROUP_COLLECTION_PATH, currentGroupId);
+                const groupSnapshot = await getDoc(groupDocRef);
+                if (!groupSnapshot.exists()) {
+                    throw new Error('Group session not found or deleted.');
+                }
+                const groupData = groupSnapshot.data();
+                const participants = groupData.participants || [];
 
-            // 1. Validate participant coordinates
-            const validParticipants = participants.filter(p => p.lat && p.lon);
-            if (validParticipants.length < 2) {
-                showStatus('Error: Need at least 2 participants with valid addresses to calculate the center. Please re-save profiles with a clear pin code.', true);
-                setButtonLoading(false);
-                return;
-            }
-            
-            const center = calculateGeometricCenter(validParticipants);
-            showStatus('Step 2/3: Finding nearby landmarks using Latlong.ai Landmark API...', false);
-            
-            // 2. Get Landmarks around the geometric center
-            const landmarkData = await getLandmarks(center.lat, center.lon);
-            
-            let potentialLocations = [];
-            
-            // Always include the theoretical center as a primary candidate
-            potentialLocations.push({ 
-                name: `Theoretical Geometric Center`, 
-                lat: center.lat, 
-                lon: center.lon 
-            });
-
-            // Add the found landmarks
-            potentialLocations.push(...landmarkData);
-
-
-            if (potentialLocations.length === 1 && landmarkData.length === 0) {
-                 showStatus('Warning: Could not find specific nearby landmarks. Calculating travel distance only to the theoretical center.', false);
-            } else {
-                 showStatus(`Step 3/3: Calculating accurate travel distance to ${potentialLocations.length} potential locations...`, false);
-            }
-
-            // 3. Calculate Distance Matrix for all potential locations
-            
-            const results = [];
-
-            for (let i = 0; i < potentialLocations.length; i++) {
-                const location = potentialLocations[i];
-                const destinationCoordinate = `${location.lat},${location.lon}`;
+                // 1. Validate participant coordinates
+                const validParticipants = participants.filter(p => p.lat && p.lon);
+                if (validParticipants.length < 2) {
+                    throw new Error('Need at least 2 participants with valid addresses to calculate the center. Please ensure all participants have saved a valid Pin Code and City.');
+                }
                 
-                let locationTotalDistance = 0;
-                let locationMaxDuration = 0;
-                let validLocation = true;
-                const travelDetails = [];
+                const center = calculateGeometricCenter(validParticipants);
                 
-                // For each potential location, calculate distance from ALL origins (one at a time)
-                for (let j = 0; j < validParticipants.length; j++) {
-                    const p = validParticipants[j];
-                    const singleOrigin = `${p.lat},${p.lon}`;
+                // --- NEW DYNAMIC RADIUS CALCULATION ---
+                const maxSpread = calculateMaxSpread(validParticipants);
+                // Use half the maximum distance between the two furthest friends, with a max cap of 20km for performance
+                const dynamicRadius = Math.min(Math.floor(maxSpread / 2), 20000); 
+                
+                showStatus(`Step 2/3: Finding nearby landmarks within a ${formatDistance(dynamicRadius)} radius using Latlong.ai Landmark API...`, false);
+                
+                // 2. Get Landmarks around the geometric center using the dynamic radius
+                const landmarkData = await getLandmarks(center.lat, center.lon, dynamicRadius);
+                
+                let potentialLocations = [];
+                
+                // Always include the theoretical center as a primary candidate
+                potentialLocations.push({ 
+                    name: `Theoretical Geometric Center`, 
+                    lat: center.lat, 
+                    lon: center.lon 
+                });
 
-                    const singleResult = await getDistanceMatrix(singleOrigin, destinationCoordinate, 'driving');
+                // Add the found landmarks
+                potentialLocations.push(...landmarkData);
+
+
+                if (potentialLocations.length === 1 && landmarkData.length === 0) {
+                     showStatus('Warning: Could not find specific nearby landmarks. Calculating travel distance only to the theoretical center.', false);
+                } else {
+                     showStatus(`Step 3/3: Calculating accurate travel distance to ${potentialLocations.length} potential locations...`, false);
+                }
+
+                // 3. Calculate Distance Matrix for all potential locations
+                
+                const results = [];
+
+                for (let i = 0; i < potentialLocations.length; i++) {
+                    const location = potentialLocations[i];
+                    const destinationCoordinate = `${location.lat},${location.lon}`;
                     
-                    if (singleResult.status === 'OK') {
-                        locationTotalDistance += singleResult.distance;
-                        locationMaxDuration = Math.max(locationMaxDuration, singleResult.duration);
+                    let locationTotalDistance = 0;
+                    let locationMaxDuration = 0;
+                    let validLocation = true;
+                    const travelDetails = [];
+                    
+                    // For each potential location, calculate distance from ALL origins (one at a time)
+                    for (let j = 0; j < validParticipants.length; j++) {
+                        const p = validParticipants[j];
+                        const singleOrigin = `${p.lat},${p.lon}`;
 
-                        travelDetails.push({
-                            displayName: p.displayName,
-                            distance: singleResult.distance,
-                            duration: singleResult.duration
+                        const singleResult = await getDistanceMatrix(singleOrigin, destinationCoordinate, 'driving');
+                        
+                        if (singleResult.status === 'OK') {
+                            locationTotalDistance += singleResult.distance;
+                            locationMaxDuration = Math.max(locationMaxDuration, singleResult.duration);
+
+                            travelDetails.push({
+                                displayName: p.displayName,
+                                distance: singleResult.distance,
+                                duration: singleResult.duration
+                            });
+                        } else {
+                            validLocation = false;
+                            travelDetails.push({ displayName: p.displayName, distance: Infinity, duration: Infinity });
+                            // Optimization: if one participant cannot reach, skip location entirely
+                            break; 
+                        }
+                    }
+
+                    if (validLocation) {
+                        results.push({
+                            rank: 0, // Placeholder, assigned later
+                            placeName: location.name,
+                            lat: location.lat,
+                            lon: location.lon,
+                            totalDistance: locationTotalDistance,
+                            maxDuration: locationMaxDuration,
+                            travelDetails: travelDetails
                         });
-                    } else {
-                        validLocation = false;
-                        travelDetails.push({ displayName: p.displayName, distance: Infinity, duration: Infinity });
-                        // Optimization: if one participant cannot reach, skip location entirely
-                        break; 
                     }
                 }
 
-                if (validLocation) {
-                    results.push({
-                        rank: 0, // Placeholder, assigned later
-                        placeName: location.name,
-                        lat: location.lat,
-                        lon: location.lon,
-                        totalDistance: locationTotalDistance,
-                        maxDuration: locationMaxDuration,
-                        travelDetails: travelDetails
-                    });
-                }
+                // 4. Sort and Display Results
+                const sortedResults = results
+                    .sort((a, b) => a.totalDistance - b.totalDistance)
+                    .slice(0, 5); // Show top 5
+
+                displayResults(sortedResults, validParticipants);
+
+                showStatus('Calculation complete! Results displayed.', false);
+            } catch (error) {
+                console.error("Calculation failed:", error);
+                showStatus(`Calculation failed: ${error.message}`, true);
+            } finally {
+                setButtonLoading(false);
             }
-
-            // 4. Sort and Display Results
-            const sortedResults = results
-                .sort((a, b) => a.totalDistance - b.totalDistance)
-                .slice(0, 5); // Show top 5
-
-            displayResults(sortedResults, validParticipants);
-
-            setButtonLoading(false);
-            showStatus('Calculation complete! Results displayed.', false);
         }
         
         // --- Display Functions ---
@@ -727,7 +793,7 @@
                 const coords = await geocodeAddress(homeLocality);
 
                 if (!coords) {
-                    // Specific error handling for geocoding failure
+                    // This block is technically redundant due to the throw in geocodeAddress, but kept for safety
                     throw new Error("Could not find precise coordinates for the provided Pin Code/Address. Please ensure you entered the Pin Code followed by the City/Locality (e.g., 560013, Bengaluru).");
                 }
 
@@ -747,7 +813,12 @@
                 setView('main', userProfile.currentGroupId ? 'session' : 'create');
             } catch (error) {
                 console.error("Error saving profile:", error);
-                showStatus(`Error saving profile: ${error.message}`, true);
+                // Ensure the error message includes the specific geocoding instruction if it's a known failure type
+                const displayMessage = error.message.includes("coordinates") ? 
+                    error.message : 
+                    `Error saving profile: ${error.message}`;
+                    
+                showStatus(displayMessage, true);
             } finally {
                 setButtonLoading(false, SAVE_PROFILE_BTN);
             }
@@ -938,17 +1009,20 @@
                 auth = getAuth(app);
                 setupListeners();
 
+                // Start anonymous authentication immediately
                 await signInAnonymously(auth);
                 
+                // Set up the listener for auth state changes
                 onAuthStateChanged(auth, async (user) => {
                     if (user) userId = user.uid;
                     else userId = crypto.randomUUID();
                     isAuthReady = true;
+                    // Once authenticated, load the user's profile
                     await loadUserProfile();
                 });
             } catch (error) {
-                console.error('Firebase Error:', error);
-                showStatus(`Firebase failed: ${error.message}. App will function for single user only.`, true);
+                console.error('Firebase Initialization Error:', error);
+                showStatus(`Firebase failed: ${error.message}. Group features may not work.`, true);
                 isAuthReady = true;
                 // Fallback view if Firebase fails to load
                 setView('profile');
